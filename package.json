@@ -1,0 +1,29 @@
+{
+  "name": "mercado-livre-price-history",
+  "version": "1.0.0",
+  "description": "Mercado Livre Price History Tracker and cost-benefit analysis dashboard",
+  "main": "src/server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node src/server.js",
+    "test-scraper": "node src/test-scraper.js"
+  },
+  "dependencies": {
+    "axios": "^1.7.9",
+    "cheerio": "^1.0.0-rc.12",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^4.21.2",
+    "google-auth-library": "^10.7.0",
+    "jsonwebtoken": "^9.0.3",
+    "mongoose": "^8.9.3",
+    "node-cron": "^3.0.3",
+    "puppeteer": "^21.6.1",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}

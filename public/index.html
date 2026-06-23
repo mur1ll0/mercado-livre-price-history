@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mercado Livre Price History Tracker</title>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- Chart.js with date adapter capability -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Stylesheet -->
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app-container">
+    
+    <!-- Top Gradient Bar -->
+    <div class="top-gradient-bar"></div>
+
+    <!-- Header Section -->
+    <header class="main-header">
+      <div class="logo-area">
+        <div class="logo-icon">
+          <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" width="32" height="32" fill="currentColor">
+            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm2.07-7.75l-.9.92C13.45 12.9 13 13.5 13 15h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H7c0-2.76 2.24-5 5-5s5 2.24 5 5c0 1.04-.42 1.99-1.07 2.75z" fill="url(#grad1)"/>
+            <defs>
+              <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" style="stop-color:#9f7aea;stop-opacity:1" />
+                <stop offset="100%" style="stop-color:#4299e1;stop-opacity:1" />
+              </linearGradient>
+            </defs>
+          </svg>
+        </div>
+        <div>
+          <h1>Mercado Livre Price History</h1>
+          <p class="subtitle">Rastreamento de preços e análise de custo-benefício por UUID</p>
+        </div>
+      </div>
+      
+      <div class="actions-area" style="display: flex; align-items: center; gap: 1.2rem;">
+        <button id="btn-sync-all" class="btn btn-secondary flex-btn">
+          <svg class="icon-spin" id="sync-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l.73-.73" />
+          </svg>
+          <span id="sync-text">Atualizar Preços</span>
+        </button>
+        
+        <div class="user-profile" id="user-profile-widget" style="display: flex; align-items: center; gap: 0.8rem; border-left: 1px solid var(--border-color); padding-left: 1.2rem;">
+          <img id="user-avatar" src="" alt="Avatar" style="width: 36px; height: 36px; border-radius: 50%; border: 2px solid var(--accent-color); background: var(--bg-tertiary);" />
+          <div style="display: flex; flex-direction: column; align-items: flex-start;">
+            <span id="user-name" style="font-size: 0.85rem; font-weight: 600; max-width: 120px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-primary);">-</span>
+            <button id="btn-logout" style="background: none; border: none; padding: 0; margin-top: 0.15rem; font-size: 0.75rem; color: var(--accent-red); cursor: pointer; font-weight: 500; display: flex; align-items: center; gap: 0.25rem; outline: none;">
+              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>
+              </svg>
+              Sair
+            </button>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- Stats Grid -->
+    <section class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-icon purple-gradient">
+          <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+            <line x1="8" y1="21" x2="16" y2="21" />
+            <line x1="12" y1="17" x2="12" y2="21" />
+          </svg>
+        </div>
+        <div class="stat-info">
+          <span class="stat-label">Produtos Unificados</span>
+          <span id="stat-total-products" class="stat-value">0</span>
+        </div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-icon green-gradient">
+          <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+          </svg>
+        </div>
+        <div class="stat-info">
+          <span class="stat-label">Melhor Custo-Benefício</span>
+          <span id="stat-best-deal" class="stat-value truncate-stat">-</span>
+        </div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-icon orange-gradient">
+          <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="19" y1="5" x2="5" y2="19" />
+            <circle cx="6.5" cy="6.5" r="2.5" />
+            <circle cx="17.5" cy="17.5" r="2.5" />
+          </svg>
+        </div>
+        <div class="stat-info">
+          <span class="stat-label">Desconto Médio</span>
+          <span id="stat-avg-discount" class="stat-value">0%</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Add URL Form -->
+    <section class="form-section glass-panel">
+      <h2>Rastrear Novo Link</h2>
+      <p class="section-desc">Insira um link do Mercado Livre (anúncio de catálogo ou de vendedor) para iniciar a análise histórica e custo-benefício.</p>
+      
+      <form id="add-product-form">
+        <div class="input-group">
+          <input 
+            type="url" 
+            id="product-url" 
+            placeholder="https://www.mercadolivre.com.br/..." 
+            required 
+            autocomplete="off"
+          >
+          <button type="submit" class="btn btn-primary" id="btn-submit">
+            <span class="btn-text">Adicionar Produto</span>
+            <span class="btn-spinner hidden"></span>
+          </button>
+        </div>
+      </form>
+      <div id="form-error" class="error-message hidden"></div>
+      <div id="form-success" class="success-message hidden"></div>
+    </section>
+
+    <!-- Dashboard Content Area (Grouped List) -->
+    <main class="dashboard-main">
+      <div class="section-header-row">
+        <h2>Produtos Monitorados</h2>
+        <div class="legend">
+          <span class="legend-item"><span class="badge badge-high"></span> Excelente Custo-Benefício</span>
+          <span class="legend-item"><span class="badge badge-med"></span> Moderado</span>
+          <span class="legend-item"><span class="badge badge-low"></span> Menos Vantajoso</span>
+        </div>
+      </div>
+
+      <!-- Container where products will be rendered -->
+      <div id="products-container" class="products-wrapper">
+        <div class="loading-state">
+          <span class="spinner"></span>
+          <p>Carregando produtos unificados...</p>
+        </div>
+      </div>
+    </main>
+
+  </div>
+
+  <!-- Details & History Modal -->
+  <div id="details-modal" class="modal-overlay hidden">
+    <div class="modal-content glass-panel">
+      <div class="modal-header">
+        <h3 id="modal-title">Detalhes do Produto</h3>
+        <button id="close-modal-btn" class="close-btn">
+          <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      </div>
+      
+      <div class="modal-body">
+        <div class="modal-grid">
+          
+          <!-- Image and Details Column -->
+          <div class="modal-info-col">
+            <div class="modal-image-wrapper">
+              <img id="modal-image" src="" alt="Thumbnail">
+            </div>
+            
+            <div class="modal-meta">
+              <p class="modal-category" id="modal-category"></p>
+              <div class="modal-rating-row" id="modal-rating-row"></div>
+              
+              <!-- AI review summary container -->
+              <div class="ai-summary-box hidden" id="modal-ai-summary-section">
+                <h4>
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" style="vertical-align: middle; margin-right: 4px; color: var(--accent-color);">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/>
+                  </svg>
+                  Opinião Geral gerada por IA
+                </h4>
+                <p id="modal-ai-summary" class="ai-summary-text"></p>
+              </div>
+
+              <div class="modal-link-row" style="margin-top: 1rem; display: flex; flex-direction: column; gap: 0.6rem;">
+                <button id="modal-btn-update" class="btn btn-secondary flex-btn" style="width: 100%; font-size: 0.85rem; padding: 0.5rem 1rem;">
+                  <svg id="modal-update-icon" class="icon-spin" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l.73-.73" />
+                  </svg>
+                  <span id="modal-update-text">Atualizar Todos Anúncios</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Chart and History Column -->
+          <div class="modal-chart-col">
+            <h4>Comparativo de Histórico de Preços (Dispersão)</h4>
+            <div class="chart-container">
+              <canvas id="priceHistoryChart"></canvas>
+            </div>
+            
+            <h4 style="margin-top: 1.5rem;">Anúncios Comparados</h4>
+            <div class="comparison-table-wrapper">
+              <table class="comparison-table">
+                <thead>
+                  <tr>
+                    <th>Anúncio</th>
+                    <th>Preço Atual</th>
+                    <th>Parcelamento</th>
+                    <th>Envio</th>
+                    <th>Score</th>
+                    <th>Link</th>
+                  </tr>
+                </thead>
+                <tbody id="modal-comparison-tbody">
+                  <!-- Scored announcements comparison -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Initial State Injection -->
+  <script src="app.js"></script>
+</body>
+</html>

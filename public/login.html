@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login - Mercado Livre Price Tracker</title>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;700;800&display=swap" rel="stylesheet">
+  <!-- Google Identity Services (GIS) Library -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <!-- Stylesheet -->
+  <style>
+    :root {
+      --bg-primary: #0a0712;
+      --bg-secondary: #120e22;
+      --accent-color: #805ad5;
+      --accent-cyan: #00f2fe;
+      --text-primary: #f7fafc;
+      --text-secondary: #a0aec0;
+      --border-color: rgba(255, 255, 255, 0.08);
+      --glass-bg: rgba(18, 14, 34, 0.7);
+      --glass-border: rgba(255, 255, 255, 0.05);
+      --font-main: 'Inter', sans-serif;
+      --font-display: 'Outfit', sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-primary);
+      color: var(--text-primary);
+      font-family: var(--font-main);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* Glow Orbs */
+    .glow-orb {
+      position: absolute;
+      width: 400px;
+      height: 400px;
+      border-radius: 50%;
+      filter: blur(120px);
+      opacity: 0.15;
+      z-index: 1;
+    }
+
+    .orb-purple {
+      background: var(--accent-color);
+      top: -100px;
+      right: -100px;
+    }
+
+    .orb-cyan {
+      background: var(--accent-cyan);
+      bottom: -150px;
+      left: -100px;
+    }
+
+    .login-container {
+      position: relative;
+      z-index: 10;
+      width: 100%;
+      max-width: 420px;
+      background: var(--glass-bg);
+      border: 1px solid var(--glass-border);
+      border-radius: 24px;
+      padding: 3rem 2rem;
+      box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.8);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      text-align: center;
+    }
+
+    .logo-wrapper {
+      margin-bottom: 2rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.8rem;
+    }
+
+    .logo-icon {
+      background: var(--bg-secondary);
+      padding: 1rem;
+      border-radius: 16px;
+      border: 1px solid var(--border-color);
+      color: var(--accent-cyan);
+      display: inline-flex;
+    }
+
+    h1 {
+      font-family: var(--font-display);
+      font-size: 1.8rem;
+      font-weight: 800;
+      background: linear-gradient(135deg, #ffffff 40%, var(--text-secondary) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .subtitle {
+      font-size: 0.9rem;
+      color: var(--text-secondary);
+      margin-top: 0.5rem;
+      line-height: 1.4;
+    }
+
+    .divider {
+      display: flex;
+      align-items: center;
+      margin: 2rem 0;
+      color: var(--text-secondary);
+      font-size: 0.8rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .divider::before, .divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border-color);
+    }
+
+    .divider::before { margin-right: 1rem; }
+    .divider::after { margin-left: 1rem; }
+
+    .oauth-btn-wrapper {
+      display: flex;
+      justify-content: center;
+      margin-top: 1rem;
+    }
+
+    .error-container {
+      margin-top: 1.5rem;
+      padding: 0.75rem 1rem;
+      background: rgba(229, 62, 62, 0.15);
+      border: 1px solid rgba(229, 62, 62, 0.3);
+      color: #feb2b2;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      text-align: left;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="glow-orb orb-purple"></div>
+  <div class="glow-orb orb-cyan"></div>
+
+  <div class="login-container">
+    <div class="logo-wrapper">
+      <div class="logo-icon">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" width="40" height="40" fill="currentColor">
+          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm2.07-7.75l-.9.92C13.45 12.9 13 13.5 13 15h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2-2s-2 .9-2 2H7c0-2.76 2.24-5 5-5s5 2.24 5 5c0 1.04-.42 1.99-1.07 2.75z" fill="url(#grad1)"/>
+          <defs>
+            <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" style="stop-color:#9f7aea;stop-opacity:1" />
+              <stop offset="100%" style="stop-color:#00f2fe;stop-opacity:1" />
+            </linearGradient>
+          </defs>
+        </svg>
+      </div>
+      <h1>Mercado Livre Price Tracker</h1>
+      <p class="subtitle">Faça login com a sua conta Google para gerenciar seus produtos monitorados e histórico de preços.</p>
+    </div>
+
+    <div class="divider">Acesso</div>
+
+    <!-- Google One Tap / Button Container -->
+    <div class="oauth-btn-wrapper">
+      <div id="google-login-btn"></div>
+    </div>
+
+    <div id="error-box" class="error-container hidden"></div>
+  </div>
+
+  <script>
+    // 1. Fetch backend configuration
+    const host = window.location.origin;
+
+    async function initGoogleLogin() {
+      try {
+        const res = await fetch(`${host}/api/config`);
+        const config = await res.json();
+        const client_id = config.googleClientId;
+
+        if (!client_id) {
+          showError('Erro de Configuração: GOOGLE_CLIENT_ID não está configurado no servidor.');
+          return;
+        }
+
+        // Initialize GIS Client
+        google.accounts.id.initialize({
+          client_id: client_id,
+          callback: handleCredentialResponse,
+          auto_select: false
+        });
+
+        // Render standard button
+        google.accounts.id.renderButton(
+          document.getElementById('google-login-btn'),
+          { 
+            theme: 'dark', 
+            size: 'large', 
+            width: 280,
+            text: 'signin_with',
+            shape: 'pill'
+          }
+        );
+
+      } catch (err) {
+        showError('Falha ao conectar ao servidor de autenticação.');
+        console.error(err);
+      }
+    }
+
+    // 2. Handle JWT Google Auth credential response
+    async function handleCredentialResponse(response) {
+      const errorBox = document.getElementById('error-box');
+      errorBox.classList.add('hidden');
+      
+      try {
+        const apiRes = await fetch(`${host}/api/auth/google`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ idToken: response.credential })
+        });
+
+        const data = await apiRes.json();
+
+        if (!apiRes.ok) {
+          showError(data.error || 'Falha na autenticação do Google.');
+          return;
+        }
+
+        // Save session credentials
+        localStorage.setItem('ml_token', data.token);
+        localStorage.setItem('ml_user', JSON.stringify(data.user));
+
+        // Redirect to dashboard
+        window.location.href = '/index.html';
+
+      } catch (err) {
+        showError('Falha de rede ao tentar fazer login.');
+        console.error(err);
+      }
+    }
+
+    function showError(message) {
+      const errorBox = document.getElementById('error-box');
+      errorBox.textContent = message;
+      errorBox.classList.remove('hidden');
+    }
+
+    // Load GIS SDK
+    window.onload = initGoogleLogin;
+  </script>
+</body>
+</html>
