@@ -184,17 +184,36 @@
     <div class="divider">Acesso</div>
 
     <!-- Google One Tap / Button Container -->
-    <div class="oauth-btn-wrapper">
+    <div class="oauth-btn-wrapper" id="google-btn-wrapper">
       <div id="google-login-btn"></div>
+    </div>
+
+    <div id="loading-box" class="loading-spinner" style="display: none; align-items: center; justify-content: center; gap: 0.8rem; font-size: 0.9rem; color: var(--text-secondary); margin-top: 1.5rem; animation: spin 1s linear infinite;">
+      <span>Validando sua conta no Google...</span>
     </div>
 
     <div id="error-box" class="error-container hidden"></div>
   </div>
 
   <script>
-    // 1. Fetch backend configuration
+    // Redirect if already logged in
+    if (localStorage.getItem('ml_token')) {
+      window.location.href = '/index.html';
+    }
+
     const host = window.location.origin;
 
+    function showError(message) {
+      const errorBox = document.getElementById('error-box');
+      errorBox.textContent = message;
+      errorBox.classList.remove('hidden');
+      
+      document.getElementById('google-btn-wrapper').style.display = 'flex';
+      const loadingBox = document.getElementById('loading-box');
+      if (loadingBox) loadingBox.style.display = 'none';
+    }
+
+    // 1. Fetch backend configuration
     async function initGoogleLogin() {
       try {
         const res = await fetch(`${host}/api/config`);
@@ -210,20 +229,23 @@
         google.accounts.id.initialize({
           client_id: client_id,
           callback: handleCredentialResponse,
-          auto_select: false
+          auto_select: false,
+          cancel_on_tap_outside: true
         });
 
         // Render standard button
         google.accounts.id.renderButton(
           document.getElementById('google-login-btn'),
           { 
-            theme: 'dark', 
+            theme: 'filled_blue', 
             size: 'large', 
-            width: 280,
+            width: '300',
             text: 'signin_with',
             shape: 'pill'
           }
         );
+
+        google.accounts.id.prompt(); // One Tap prompt
 
       } catch (err) {
         showError('Falha ao conectar ao servidor de autenticação.');
@@ -235,6 +257,13 @@
     async function handleCredentialResponse(response) {
       const errorBox = document.getElementById('error-box');
       errorBox.classList.add('hidden');
+
+      // Show loader if available
+      const loadingBox = document.getElementById('loading-box');
+      if (loadingBox) {
+        document.getElementById('google-btn-wrapper').style.display = 'none';
+        loadingBox.style.display = 'flex';
+      }
       
       try {
         const apiRes = await fetch(`${host}/api/auth/google`, {
@@ -265,14 +294,16 @@
       }
     }
 
-    function showError(message) {
-      const errorBox = document.getElementById('error-box');
-      errorBox.textContent = message;
-      errorBox.classList.remove('hidden');
-    }
-
-    // Load GIS SDK
-    window.onload = initGoogleLogin;
+    // Wait for the Google API script to be fully loaded
+    window.addEventListener('load', () => {
+      // Check if google library is loaded, otherwise poll or wait
+      const checkInterval = setInterval(() => {
+        if (typeof google !== 'undefined' && google.accounts && google.accounts.id) {
+          clearInterval(checkInterval);
+          initGoogleLogin();
+        }
+      }, 100);
+    });
   </script>
 </body>
 </html>

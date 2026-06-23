@@ -268,6 +268,12 @@ app.get('/api/products/ranked', authenticateToken, async (req, res) => {
 
 // Helper: Trigger GitHub Actions scraper for background processing
 async function triggerGitHubScraper(payload) {
+  // If running locally (not on Vercel), do not trigger GitHub Actions; use local scraping instead
+  if (!process.env.VERCEL) {
+    console.log('[github-trigger] Running locally (non-Vercel environment). Skipping GitHub action to run scraper locally.');
+    return false;
+  }
+
   if (process.env.GITHUB_PAT && process.env.GITHUB_REPO) {
     try {
       const response = await fetch(`https://api.github.com/repos/${process.env.GITHUB_REPO}/dispatches`, {

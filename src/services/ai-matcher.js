@@ -1,7 +1,6 @@
 import axios from 'axios';
 import UnifiedProduct from '../models/UnifiedProduct.js';
 
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || '';
 
 /**
  * Calculates token/word Jaccard similarity between two strings.
@@ -28,7 +27,8 @@ function getJaccardSimilarity(str1, str2) {
  * @returns {Promise<{isSame: boolean, confidence: number, reason: string}>}
  */
 async function compareWithLLM(productA, productB) {
-  if (!OPENROUTER_API_KEY) {
+  const apiKey = process.env.OPENROUTER_API_KEY || '';
+  if (!apiKey) {
     console.warn('[ai-matcher] OPENROUTER_API_KEY is not set. Skipping LLM comparison.');
     return { isSame: false, confidence: 0, reason: 'Chave API ausente' };
   }
@@ -64,7 +64,7 @@ Anúncio 2:
       },
       {
         headers: {
-          'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+          'Authorization': `Bearer ${apiKey}`,
           'HTTP-Referer': 'https://github.com/mur1ll0/mercado-livre-price-history',
           'Content-Type': 'application/json'
         },
