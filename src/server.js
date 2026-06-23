@@ -13,9 +13,11 @@ async function startServer() {
     // Establish database connection
     await connectDB();
     
-    // Start listening
     app.listen(PORT, () => {
-      console.log(`[server] Server is running in ${process.env.NODE_ENV || 'development'} mode on port ${PORT}`);
+      console.log(`\n==================================================`);
+      console.log(`  Server is running in ${process.env.NODE_ENV || 'development'} mode`);
+      console.log(`  Local Access: http://localhost:${PORT}`);
+      console.log(`==================================================\n`);
     });
   } catch (err) {
     console.error('[server] Failed to start server:', err.message);

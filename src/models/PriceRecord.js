@@ -5,6 +5,7 @@ const PriceRecordSchema = new mongoose.Schema({
   date: { type: String, required: true }, // Format YYYY-MM-DD
   price: { type: Number, required: true },
   originalPrice: { type: Number, default: null },
+  installmentsTotal: { type: Number, default: null },
   createdAt: { type: Date, default: Date.now }
 });
 

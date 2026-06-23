@@ -19,7 +19,7 @@
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^8.9.3",
     "node-cron": "^3.0.3",
-    "puppeteer": "^21.6.1",
+    "puppeteer": "^25.1.0",
     "puppeteer-extra": "^3.3.6",
     "puppeteer-extra-plugin-stealth": "^2.11.2"
   },

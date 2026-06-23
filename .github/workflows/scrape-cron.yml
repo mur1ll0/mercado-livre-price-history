@@ -25,6 +25,8 @@ jobs:
 
       - name: Install Dependencies
         run: npm ci || npm install
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: true
 
       - name: Install Puppeteer Chromium Browser Dependencies
         run: |

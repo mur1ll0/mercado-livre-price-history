@@ -7,10 +7,13 @@ const AnnouncementSchema = new mongoose.Schema({
   title: { type: String, default: 'Carregando dados...' },
   price: { type: Number, default: null },
   originalPrice: { type: Number, default: null },
+  discountPercent: { type: Number, default: 0 },
   installmentsText: { type: String, default: '' },
+  installmentsTotal: { type: Number, default: null },
   interestFree: { type: Boolean, default: false },
   shippingCost: { type: Number, default: null }, // 0 for free
   deliveryTime: { type: String, default: '' },
+  deliveryDate: { type: Date, default: null },
   isFull: { type: Boolean, default: false },
   isFreeShipping: { type: Boolean, default: false },
   isUnavailable: { type: Boolean, default: false }, // Paused, out of stock, or deleted

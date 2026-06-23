@@ -23,15 +23,7 @@
     <header class="main-header">
       <div class="logo-area">
         <div class="logo-icon">
-          <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" width="32" height="32" fill="currentColor">
-            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm2.07-7.75l-.9.92C13.45 12.9 13 13.5 13 15h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H7c0-2.76 2.24-5 5-5s5 2.24 5 5c0 1.04-.42 1.99-1.07 2.75z" fill="url(#grad1)"/>
-            <defs>
-              <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" style="stop-color:#9f7aea;stop-opacity:1" />
-                <stop offset="100%" style="stop-color:#4299e1;stop-opacity:1" />
-              </linearGradient>
-            </defs>
-          </svg>
+          <img src="/logo.png" alt="Logo" width="32" height="32" style="object-fit: contain; border-radius: 8px;">
         </div>
         <div>
           <h1>Mercado Livre Price History</h1>
@@ -131,12 +123,20 @@
 
     <!-- Dashboard Content Area (Grouped List) -->
     <main class="dashboard-main">
-      <div class="section-header-row">
+      <div class="section-header-row" style="flex-wrap: wrap; gap: 1rem;">
         <h2>Produtos Monitorados</h2>
-        <div class="legend">
-          <span class="legend-item"><span class="badge badge-high"></span> Excelente Custo-Benefício</span>
-          <span class="legend-item"><span class="badge badge-med"></span> Moderado</span>
-          <span class="legend-item"><span class="badge badge-low"></span> Menos Vantajoso</span>
+        <div style="display: flex; align-items: center; gap: 1.2rem; flex-wrap: wrap;">
+          <div class="category-filter-wrapper" style="display: flex; align-items: center; gap: 0.5rem;">
+            <label for="filter-category" style="font-size: 0.8rem; color: var(--text-secondary); font-weight: 500;">Categoria:</label>
+            <select id="filter-category" style="background: var(--bg-tertiary); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 8px; padding: 0.4rem 0.8rem; font-size: 0.8rem; outline: none; cursor: pointer; min-width: 180px; transition: border-color 0.2s;">
+              <option value="">Todas as Categorias</option>
+            </select>
+          </div>
+          <div class="legend">
+            <span class="legend-item"><span class="badge badge-high"></span> Excelente Custo-Benefício</span>
+            <span class="legend-item"><span class="badge badge-med"></span> Moderado</span>
+            <span class="legend-item"><span class="badge badge-low"></span> Menos Vantajoso</span>
+          </div>
         </div>
       </div>
 
@@ -165,7 +165,7 @@
       </div>
       
       <div class="modal-body">
-        <div class="modal-grid">
+        <div class="modal-top-grid">
           
           <!-- Image and Details Column -->
           <div class="modal-info-col">
@@ -199,33 +199,46 @@
             </div>
           </div>
 
-          <!-- Chart and History Column -->
+          <!-- Chart Column -->
           <div class="modal-chart-col">
-            <h4>Comparativo de Histórico de Preços (Dispersão)</h4>
+            <div class="chart-header-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; flex-wrap: wrap; gap: 0.5rem;">
+              <h4 style="margin: 0;">Comparativo de Histórico de Preços (Dispersão)</h4>
+              <div class="chart-filter-wrapper" style="display: flex; align-items: center; gap: 0.4rem;">
+                <label for="chart-price-type" style="font-size: 0.75rem; color: var(--text-secondary); font-weight: 500;">Exibir Preço:</label>
+                <select id="chart-price-type" style="background: var(--bg-tertiary); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 6px; padding: 0.25rem 0.5rem; font-size: 0.75rem; outline: none; cursor: pointer;">
+                  <option value="cash">Valor à Vista</option>
+                  <option value="installments">Total Parcelado</option>
+                  <option value="both">Ambos</option>
+                </select>
+              </div>
+            </div>
             <div class="chart-container">
               <canvas id="priceHistoryChart"></canvas>
             </div>
-            
-            <h4 style="margin-top: 1.5rem;">Anúncios Comparados</h4>
-            <div class="comparison-table-wrapper">
-              <table class="comparison-table">
-                <thead>
-                  <tr>
-                    <th>Anúncio</th>
-                    <th>Preço Atual</th>
-                    <th>Parcelamento</th>
-                    <th>Envio</th>
-                    <th>Score</th>
-                    <th>Link</th>
-                  </tr>
-                </thead>
-                <tbody id="modal-comparison-tbody">
-                  <!-- Scored announcements comparison -->
-                </tbody>
-              </table>
-            </div>
           </div>
 
+        </div>
+
+        <!-- Full Width Table Column -->
+        <div class="modal-bottom-table-section">
+          <h4 style="margin-top: 1.5rem;">Anúncios Comparados</h4>
+          <div class="comparison-table-wrapper">
+            <table class="comparison-table">
+              <thead>
+                <tr>
+                  <th>Anúncio</th>
+                  <th>Preço Atual</th>
+                  <th>Parcelamento</th>
+                  <th>Envio</th>
+                  <th>Score</th>
+                  <th>Link</th>
+                </tr>
+              </thead>
+              <tbody id="modal-comparison-tbody">
+                <!-- Scored announcements comparison -->
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>

@@ -11,6 +11,8 @@ import PriceRecord from './models/PriceRecord.js';
 import UserProduct from './models/UserProduct.js';
 import { parseMercadoLivreUrl } from './scraper.js';
 import { findMatchingProduct } from './services/ai-matcher.js';
+import Category from './models/Category.js';
+import { saveCategoryTree } from './services/category-helper.js';
 
 const app = express();
 
@@ -157,19 +159,22 @@ function scoreAnnouncements(announcements, histories) {
     if (ann.isUnavailable || ann.price === null) {
       return {
         ...ann,
-        priceHistory: history.map(h => ({ date: h.date, price: h.price, originalPrice: h.originalPrice })),
+        priceHistory: history.map(h => ({ date: h.date, price: h.price, originalPrice: h.originalPrice, installmentsTotal: h.installmentsTotal })),
         costBenefitScore: 0,
-        breakdown: { priceScore: 0, shippingScore: 0, installmentScore: 0, ratingScore: 0 }
+        breakdown: { priceScore: 0, discountScore: 0, shippingScore: 0, installmentScore: 0, ratingScore: 0 }
       };
     }
 
-    // A. Price Score (45% weight)
+    // A. Price Score (40% weight)
     let priceScore = 50;
     if (ann.price > 0 && minPrice > 0) {
       priceScore = 100 * (minPrice / ann.price);
     }
 
-    // B. Shipping Score (20% weight)
+    // B. Discount Score (10% weight)
+    let discountScore = ann.discountPercent || 0; // 0 to 100
+
+    // C. Shipping Score (20% weight)
     let shippingScore = 0;
     if (ann.isFreeShipping) shippingScore += 50;
     if (ann.isFull) shippingScore += 20;
@@ -184,23 +189,24 @@ function scoreAnnouncements(announcements, histories) {
     }
     if (shippingScore > 100) shippingScore = 100;
 
-    // C. Installment Score (20% weight)
+    // D. Installment Score (15% weight)
     let installmentScore = ann.interestFree ? 100 : 0;
 
-    // D. Rating Score (15% weight)
+    // E. Rating Score (15% weight)
     // Rating comes from parent product
     const ratingVal = ann.rating !== undefined && ann.rating !== null ? ann.rating : 4.0;
     let ratingScore = ratingVal * 20;
 
     // Calculate final weighted score
-    const finalScore = (priceScore * 0.45) + (shippingScore * 0.20) + (installmentScore * 0.20) + (ratingScore * 0.15);
+    const finalScore = (priceScore * 0.40) + (discountScore * 0.10) + (shippingScore * 0.20) + (installmentScore * 0.15) + (ratingScore * 0.15);
 
     return {
       ...ann,
-      priceHistory: history.map(h => ({ date: h.date, price: h.price, originalPrice: h.originalPrice })),
+      priceHistory: history.map(h => ({ date: h.date, price: h.price, originalPrice: h.originalPrice, installmentsTotal: h.installmentsTotal })),
       costBenefitScore: parseFloat(finalScore.toFixed(1)),
       breakdown: {
         priceScore: parseFloat(priceScore.toFixed(1)),
+        discountScore: parseFloat(discountScore.toFixed(1)),
         shippingScore: parseFloat(shippingScore.toFixed(1)),
         installmentScore: parseFloat(installmentScore.toFixed(1)),
         ratingScore: parseFloat(ratingScore.toFixed(1))
@@ -209,15 +215,25 @@ function scoreAnnouncements(announcements, histories) {
   }).sort((a, b) => b.costBenefitScore - a.costBenefitScore);
 }
 
-// 3. Get user's tracked products with scored announcements
+// 3. Get user's tracked products with scored announcements (with category filtering)
 app.get('/api/products/ranked', authenticateToken, async (req, res) => {
   try {
+    const { category } = req.query;
+
     // A. Fetch tracked product IDs for this user
     const userProducts = await UserProduct.find({ userId: req.user.id }).lean();
     const productIds = userProducts.map(up => up.productId);
 
-    // B. Fetch the unified products
-    const products = await UnifiedProduct.find({ _id: { $in: productIds } }).lean();
+    // B. Fetch the unified products (filtered by category hierarchy if requested)
+    let productQuery = { _id: { $in: productIds } };
+    if (category) {
+      // Escape regex special chars
+      const escapedCategory = category.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+      // Match the category path prefix (matches direct category or subcategories)
+      productQuery.category = { $regex: new RegExp(`^${escapedCategory}($|\\s*>\\s*)`) };
+    }
+
+    const products = await UnifiedProduct.find(productQuery).lean();
 
     // C. For each product, gather its announcements and price histories
     const rankedProducts = await Promise.all(
@@ -263,6 +279,17 @@ app.get('/api/products/ranked', authenticateToken, async (req, res) => {
   } catch (err) {
     console.error('Error fetching ranked products:', err);
     res.status(500).json({ error: 'Erro ao carregar os dados ranqueados.' });
+  }
+});
+
+// 3.5. Get list of all saved category nodes for UI dropdown
+app.get('/api/categories', authenticateToken, async (req, res) => {
+  try {
+    const categories = await Category.find({}).sort({ _id: 1 }).lean();
+    res.json(categories);
+  } catch (err) {
+    console.error('Error fetching category tree:', err);
+    res.status(500).json({ error: 'Erro ao carregar categorias.' });
   }
 });
 
@@ -393,92 +420,105 @@ app.post('/api/products/track', authenticateToken, async (req, res) => {
       // We run it as non-blocking promise
       import('./scraper.js').then(async ({ scrapeMercadoLivre }) => {
         try {
-          const scraped = await scrapeMercadoLivre(url);
+          const scrapedResult = await scrapeMercadoLivre(url);
+          const results = Array.isArray(scrapedResult) ? scrapedResult : [scrapedResult];
           
-          if (scraped.isUnavailable) {
-            await Announcement.findByIdAndUpdate(announcementId, {
-              title: scraped.title,
-              isUnavailable: true,
-              scrapedAt: new Date()
-            });
-            // Update temp product
-            await UnifiedProduct.findByIdAndUpdate(tempProductId, {
-              name: `${scraped.title} (Anúncio Indisponível)`
-            });
-            return;
+          let mainTargetProductId = null;
+
+          for (let i = 0; i < results.length; i++) {
+            const scraped = results[i];
+            const currentAnnId = scraped.id;
+
+            if (scraped.isUnavailable) {
+              await Announcement.findByIdAndUpdate(currentAnnId, {
+                title: scraped.title,
+                isUnavailable: true,
+                scrapedAt: new Date()
+              });
+              if (i === 0) {
+                await UnifiedProduct.findByIdAndUpdate(tempProductId, {
+                  name: `${scraped.title} (Anúncio Indisponível)`
+                });
+              }
+              continue;
+            }
+
+            let targetProductId = mainTargetProductId;
+            if (!targetProductId) {
+              targetProductId = await findMatchingProduct(scraped);
+              if (!targetProductId) {
+                const newProduct = new UnifiedProduct({
+                  name: scraped.title,
+                  category: scraped.categoryStr,
+                  rating: scraped.rating,
+                  reviewsCount: scraped.reviewsCount,
+                  aiSummary: scraped.aiSummary,
+                  image: scraped.image
+                });
+                await newProduct.save();
+                targetProductId = newProduct._id;
+              } else {
+                await UnifiedProduct.findByIdAndUpdate(targetProductId, {
+                  rating: scraped.rating || undefined,
+                  reviewsCount: scraped.reviewsCount || undefined,
+                  aiSummary: scraped.aiSummary || undefined,
+                  image: scraped.image || undefined
+                });
+              }
+              mainTargetProductId = targetProductId;
+            }
+
+            await Announcement.findByIdAndUpdate(
+              currentAnnId,
+              {
+                productId: targetProductId,
+                url: scraped.url,
+                title: scraped.title,
+                price: scraped.price,
+                originalPrice: scraped.originalPrice,
+                discountPercent: scraped.discountPercent || 0,
+                installmentsText: scraped.installmentsText,
+                installmentsTotal: scraped.installmentsTotal,
+                interestFree: scraped.interestFree,
+                shippingCost: scraped.shippingCost,
+                deliveryTime: scraped.deliveryTime,
+                deliveryDate: scraped.deliveryDate,
+                isFull: scraped.isFull,
+                isFreeShipping: scraped.isFreeShipping,
+                isUnavailable: false,
+                scrapedAt: new Date()
+              },
+              { upsert: true }
+            );
+
+            if (scraped.price !== null) {
+              const todayStr = new Date().toISOString().split('T')[0];
+              await PriceRecord.findOneAndUpdate(
+                { announcementId: currentAnnId, date: todayStr },
+                { price: scraped.price, originalPrice: scraped.originalPrice, installmentsTotal: scraped.installmentsTotal },
+                { upsert: true }
+              );
+            }
+
+            try {
+              const userProduct = new UserProduct({
+                userId: req.user.id,
+                productId: targetProductId
+              });
+              await userProduct.save();
+            } catch (upErr) {
+              if (upErr.code !== 11000) throw upErr;
+            }
           }
 
-          // Run AI Matching to link or create product
-          let targetProductId = await findMatchingProduct(scraped);
-
-          if (!targetProductId) {
-            // Create a new UnifiedProduct
-            const newProduct = new UnifiedProduct({
-              name: scraped.title,
-              category: scraped.categoryStr,
-              rating: scraped.rating,
-              reviewsCount: scraped.reviewsCount,
-              aiSummary: scraped.aiSummary,
-              image: scraped.image
-            });
-            await newProduct.save();
-            targetProductId = newProduct._id;
-          } else {
-            // Update existing UnifiedProduct rating & AI summary with latest info
-            await UnifiedProduct.findByIdAndUpdate(targetProductId, {
-              rating: scraped.rating || undefined,
-              reviewsCount: scraped.reviewsCount || undefined,
-              aiSummary: scraped.aiSummary || undefined,
-              image: scraped.image || undefined
-            });
-          }
-
-          // Link Announcement to the matched UnifiedProduct
-          await Announcement.findByIdAndUpdate(announcementId, {
-            productId: targetProductId,
-            title: scraped.title,
-            price: scraped.price,
-            originalPrice: scraped.originalPrice,
-            installmentsText: scraped.installmentsText,
-            interestFree: scraped.interestFree,
-            shippingCost: scraped.shippingCost,
-            deliveryTime: scraped.deliveryTime,
-            isFull: scraped.isFull,
-            isFreeShipping: scraped.isFreeShipping,
-            isUnavailable: false,
-            scrapedAt: new Date()
-          });
-
-          // Associate User to the new UnifiedProduct
-          try {
-            const userProduct = new UserProduct({
-              userId: req.user.id,
-              productId: targetProductId
-            });
-            await userProduct.save();
-          } catch (upErr) {
-            if (upErr.code !== 11000) throw upErr;
-          }
-
-          // Delete the temporary product and link records if mapped successfully
-          if (tempProductId !== targetProductId) {
+          if (mainTargetProductId && tempProductId !== mainTargetProductId) {
             await UserProduct.deleteOne({ userId: req.user.id, productId: tempProductId });
             await UnifiedProduct.deleteOne({ _id: tempProductId });
           }
 
-          // Create first price record
-          if (scraped.price !== null) {
-            const todayStr = new Date().toISOString().split('T')[0];
-            await PriceRecord.findOneAndUpdate(
-              { announcementId, date: todayStr },
-              { price: scraped.price, originalPrice: scraped.originalPrice },
-              { upsert: true }
-            );
-          }
           console.log(`[api] Local background scraping completed for announcement ${announcementId}`);
         } catch (scrapeErr) {
           console.error(`[api] Local background scraping failed for announcement ${announcementId}:`, scrapeErr.message);
-          // Set error title
           await Announcement.findByIdAndUpdate(announcementId, { title: 'Falha ao raspar o anúncio (Verifique o Link)' });
           await UnifiedProduct.findByIdAndUpdate(tempProductId, { name: 'Falha ao coletar dados do Mercado Livre' });
         }

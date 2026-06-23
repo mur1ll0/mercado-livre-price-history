@@ -7,6 +7,7 @@ import PriceRecord from './models/PriceRecord.js';
 import UserProduct from './models/UserProduct.js';
 import { scrapeMercadoLivre } from './scraper.js';
 import { findMatchingProduct } from './services/ai-matcher.js';
+import { saveCategoryTree } from './services/category-helper.js';
 
 // Load environment variables for standalone execution
 dotenv.config();
@@ -60,92 +61,103 @@ export async function runCronScrape(specificLinkId) {
     try {
       console.log(`[cron-scraper] Processing ${ann._id} | URL: ${ann.url}`);
       
-      const scraped = await scrapeMercadoLivre(ann.url);
+      const scrapedResult = await scrapeMercadoLivre(ann.url);
+      const results = Array.isArray(scrapedResult) ? scrapedResult : [scrapedResult];
       
-      if (scraped.isUnavailable) {
-        console.log(`[cron-scraper] Announcement ${ann._id} has become paused, out of stock, or deleted. Setting isUnavailable = true.`);
-        ann.isUnavailable = true;
-        ann.title = scraped.title || ann.title;
-        ann.scrapedAt = new Date();
-        await ann.save();
-        successes.push({ id: ann._id, status: 'unavailable' });
-        continue;
-      }
-
-      // If this announcement is still linked to a temporary product (e.g. from a pending addition),
-      // we try to resolve its proper product ID and merge it.
-      let targetProductId = ann.productId;
-      if (ann.productId.startsWith('temp-')) {
-        console.log(`[cron-scraper] Resolving temporary product ID ${ann.productId} for ${ann._id}`);
-        const matchedProductId = await findMatchingProduct(scraped);
+      for (const scraped of results) {
+        const currentAnnId = scraped.id;
         
-        if (matchedProductId) {
-          targetProductId = matchedProductId;
-          
-          // Re-associate any users tracking the temp product to the matched product
-          const userProducts = await UserProduct.find({ productId: ann.productId });
-          for (const up of userProducts) {
-            try {
-              const newUp = new UserProduct({ userId: up.userId, productId: targetProductId });
-              await newUp.save();
-            } catch (upErr) {
-              // Ignore unique collision
-            }
-          }
-          
-          // Cleanup temp product and mappings
-          await UserProduct.deleteMany({ productId: ann.productId });
-          await UnifiedProduct.deleteOne({ _id: ann.productId });
-        } else {
-          // Promote temp product to a permanent one
-          const newProduct = new UnifiedProduct({
-            name: scraped.title,
-            category: scraped.categoryStr,
-            rating: scraped.rating,
-            reviewsCount: scraped.reviewsCount,
-            aiSummary: scraped.aiSummary,
-            image: scraped.image
+        let currentAnn = await Announcement.findById(currentAnnId);
+        if (!currentAnn) {
+          currentAnn = new Announcement({
+            _id: currentAnnId,
+            productId: ann.productId,
+            url: scraped.url
           });
-          await newProduct.save();
-          targetProductId = newProduct._id;
-
-          // Update user mapping in DB
-          await UserProduct.updateMany({ productId: ann.productId }, { productId: targetProductId });
-          await UnifiedProduct.deleteOne({ _id: ann.productId });
         }
-      } else {
-        // Update the existing UnifiedProduct with fresh scraped data (ratings, reviews count, image, AI summary)
-        await UnifiedProduct.findByIdAndUpdate(ann.productId, {
-          rating: scraped.rating || undefined,
-          reviewsCount: scraped.reviewsCount || undefined,
-          aiSummary: scraped.aiSummary || undefined,
-          image: scraped.image || undefined
-        });
-      }
 
-      // Update Announcement details
-      ann.productId = targetProductId;
-      ann.title = scraped.title;
-      ann.price = scraped.price;
-      ann.originalPrice = scraped.originalPrice;
-      ann.installmentsText = scraped.installmentsText;
-      ann.interestFree = scraped.interestFree;
-      ann.shippingCost = scraped.shippingCost;
-      ann.deliveryTime = scraped.deliveryTime;
-      ann.isFull = scraped.isFull;
-      ann.isFreeShipping = scraped.isFreeShipping;
-      ann.isUnavailable = false;
-      ann.scrapedAt = new Date();
-      await ann.save();
+        if (scraped.isUnavailable) {
+          console.log(`[cron-scraper] Announcement ${currentAnnId} has become paused, out of stock, or deleted. Setting isUnavailable = true.`);
+          currentAnn.isUnavailable = true;
+          currentAnn.title = scraped.title || currentAnn.title;
+          currentAnn.scrapedAt = new Date();
+          await currentAnn.save();
+          continue;
+        }
 
-      // Save daily price record
-      if (scraped.price !== null) {
-        await PriceRecord.findOneAndUpdate(
-          { announcementId: ann._id, date: todayStr },
-          { price: scraped.price, originalPrice: scraped.originalPrice },
-          { upsert: true }
-        );
-        console.log(`[cron-scraper] Updated price for ${ann._id}: R$ ${scraped.price}`);
+        let targetProductId = currentAnn.productId;
+        if (currentAnn.productId.startsWith('temp-')) {
+          console.log(`[cron-scraper] Resolving temporary product ID ${currentAnn.productId} for ${currentAnnId}`);
+          const matchedProductId = await findMatchingProduct(scraped);
+          
+          if (matchedProductId) {
+            targetProductId = matchedProductId;
+            
+            const userProducts = await UserProduct.find({ productId: currentAnn.productId });
+            for (const up of userProducts) {
+              try {
+                const newUp = new UserProduct({ userId: up.userId, productId: targetProductId });
+                await newUp.save();
+              } catch (upErr) {
+                // Ignore unique collision
+              }
+            }
+            
+            await UserProduct.deleteMany({ productId: currentAnn.productId });
+            await UnifiedProduct.deleteOne({ _id: currentAnn.productId });
+          } else {
+            const newProduct = new UnifiedProduct({
+              name: scraped.title,
+              category: scraped.categoryStr,
+              rating: scraped.rating,
+              reviewsCount: scraped.reviewsCount,
+              aiSummary: scraped.aiSummary,
+              image: scraped.image
+            });
+            await newProduct.save();
+            targetProductId = newProduct._id;
+
+            await UserProduct.updateMany({ productId: currentAnn.productId }, { productId: targetProductId });
+            await UnifiedProduct.deleteOne({ _id: currentAnn.productId });
+          }
+        } else {
+          await UnifiedProduct.findByIdAndUpdate(currentAnn.productId, {
+            rating: scraped.rating || undefined,
+            reviewsCount: scraped.reviewsCount || undefined,
+            aiSummary: scraped.aiSummary || undefined,
+            image: scraped.image || undefined
+          });
+        }
+
+        currentAnn.productId = targetProductId;
+        currentAnn.title = scraped.title;
+        currentAnn.price = scraped.price;
+        currentAnn.originalPrice = scraped.originalPrice;
+        currentAnn.discountPercent = scraped.discountPercent || 0;
+        currentAnn.installmentsText = scraped.installmentsText;
+        currentAnn.installmentsTotal = scraped.installmentsTotal;
+        currentAnn.interestFree = scraped.interestFree;
+        currentAnn.shippingCost = scraped.shippingCost;
+        currentAnn.deliveryTime = scraped.deliveryTime;
+        currentAnn.deliveryDate = scraped.deliveryDate;
+        currentAnn.isFull = scraped.isFull;
+        currentAnn.isFreeShipping = scraped.isFreeShipping;
+        currentAnn.isUnavailable = false;
+        currentAnn.scrapedAt = new Date();
+        await currentAnn.save();
+
+        if (scraped.categoryStr) {
+          await saveCategoryTree(scraped.categoryStr);
+        }
+
+        if (scraped.price !== null) {
+          await PriceRecord.findOneAndUpdate(
+            { announcementId: currentAnnId, date: todayStr },
+            { price: scraped.price, originalPrice: scraped.originalPrice, installmentsTotal: scraped.installmentsTotal },
+            { upsert: true }
+          );
+          console.log(`[cron-scraper] Updated price for ${currentAnnId}: R$ ${scraped.price}`);
+        }
       }
 
       successes.push({ id: ann._id, status: 'success' });

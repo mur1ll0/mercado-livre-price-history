@@ -3,6 +3,7 @@ let token = localStorage.getItem('ml_token');
 let user = null;
 let productsData = [];
 let priceChart = null;
+let currentModalAnnouncements = [];
 
 const apiHost = window.location.origin;
 
@@ -40,9 +41,15 @@ document.getElementById('btn-logout').addEventListener('click', logout);
 // 2. Fetch all products tracked by the user
 async function loadDashboardData() {
   const container = document.getElementById('products-container');
+  const categoryFilter = document.getElementById('filter-category') ? document.getElementById('filter-category').value : '';
   
   try {
-    const res = await fetch(`${apiHost}/api/products/ranked`, {
+    let url = `${apiHost}/api/products/ranked`;
+    if (categoryFilter) {
+      url += `?category=${encodeURIComponent(categoryFilter)}`;
+    }
+    
+    const res = await fetch(url, {
       headers: {
         'Authorization': `Bearer ${token}`
       }
@@ -66,6 +73,38 @@ async function loadDashboardData() {
         <p>Ocorreu um erro ao carregar os dados. Recarregue a página.</p>
       </div>
     `;
+  }
+}
+
+// 2.5. Load all composite category nodes for the dropdown filter
+async function loadCategories() {
+  const dropdown = document.getElementById('filter-category');
+  if (!dropdown) return;
+
+  try {
+    const res = await fetch(`${apiHost}/api/categories`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+
+    if (!res.ok) throw new Error('Falha ao carregar categorias');
+
+    const categories = await res.json();
+    
+    dropdown.innerHTML = '<option value="">Todas as Categorias</option>';
+    
+    categories.forEach(cat => {
+      const option = document.createElement('option');
+      option.value = cat._id;
+      
+      const indent = '&nbsp;&nbsp;'.repeat(cat.level);
+      const prefix = cat.level > 0 ? '↳ ' : '';
+      option.innerHTML = `${indent}${prefix}${cat.name}`;
+      dropdown.appendChild(option);
+    });
+  } catch (err) {
+    console.error('Error loading category tree:', err);
   }
 }
 
@@ -166,10 +205,14 @@ function renderProductsList() {
             
             return `
               <div class="announcement-row">
-                <span class="announcement-name" title="${ann.title}">${ann.title}</span>
-                <span class="announcement-badges">${fullBadge}${freeBadge}</span>
-                <span class="announcement-price">${priceStr}</span>
-                <span class="announcement-score-badge ${statusClass}">${ann.isUnavailable ? 'Pausado' : ann.costBenefitScore + ' pts'}</span>
+                <div class="announcement-info-left">
+                  <span class="announcement-name" title="${ann.title}">${ann.title}</span>
+                  <span class="announcement-badges">${fullBadge}${freeBadge}</span>
+                </div>
+                <div class="announcement-info-right">
+                  <span class="announcement-price">${priceStr}</span>
+                  <span class="announcement-score-badge ${statusClass}">${ann.isUnavailable ? 'Pausado' : ann.costBenefitScore + ' pts'}</span>
+                </div>
               </div>
             `;
           }).join('')}
@@ -180,13 +223,13 @@ function renderProductsList() {
 
     const ratingRow = prod.rating !== null ? `
       <div class="product-rating-box">
-        <svg class="star-icon" viewBox="0 0 20 20" width="14" height="14" fill="currentColor">
+        <svg class="star-icon" viewBox="0 0 20 20" width="12" height="12" fill="currentColor">
           <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
         </svg>
         <span class="rating-value">${prod.rating.toFixed(1)}</span>
         <span class="rating-count">(${prod.reviewsCount})</span>
       </div>
-    ` : '<span style="font-size:0.75rem; color:var(--text-secondary);">Sem avaliações</span>';
+    ` : '<span style="font-size:0.72rem; color:var(--text-secondary);">Sem avaliações</span>';
 
     card.innerHTML = `
       <button class="btn-delete-product" data-id="${prod._id}" title="Parar de monitorar este produto">
@@ -202,12 +245,17 @@ function renderProductsList() {
       
       <div class="product-content-col" onclick="openDetailsModal('${prod._id}')">
         <div>
-          <div class="product-meta-top">
-            <div>
-              <h3 class="product-title">${prod.name}</h3>
-              <p class="product-category">${prod.category}</p>
-            </div>
+          <h3 class="product-title" title="${prod.name}">${prod.name}</h3>
+          <div class="product-meta-row">
+            <span class="product-category" title="${prod.category}">${prod.category}</span>
             ${ratingRow}
+          </div>
+          
+          <div class="product-price-info">
+            <div class="price-badge-container">
+              <span class="price-tag">${bestPriceFormatted}</span>
+              ${prod.avgDiscount > 0 ? `<span class="discount-pill">-${prod.avgDiscount.toFixed(0)}%</span>` : ''}
+            </div>
           </div>
           
           ${announcementsHtml}
@@ -318,6 +366,12 @@ function openDetailsModal(productId) {
   const prod = productsData.find(p => p.id === productId);
   if (!prod) return;
 
+  currentModalAnnouncements = prod.announcements || [];
+  const chartPriceTypeSelector = document.getElementById('chart-price-type');
+  if (chartPriceTypeSelector) {
+    chartPriceTypeSelector.value = 'cash'; // Reset to cash price by default
+  }
+
   const modal = document.getElementById('details-modal');
   
   // Fill details
@@ -367,8 +421,33 @@ function openDetailsModal(productId) {
     let shippingInfo = '';
     if (ann.isFreeShipping) shippingInfo += 'Grátis ';
     if (ann.isFull) shippingInfo += '⚡Full ';
-    if (ann.deliveryTime) {
-      shippingInfo += `(${ann.deliveryTime.split(' por ser ')[0]})`; // Clean up first purchase promo
+    
+    if (ann.deliveryDate) {
+      const delDate = new Date(ann.deliveryDate);
+      const today = new Date();
+      today.setHours(0,0,0,0);
+      delDate.setHours(0,0,0,0);
+      const diffTime = delDate - today;
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      
+      const day = delDate.getDate();
+      const monthNames = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+      const month = monthNames[delDate.getMonth()];
+      
+      let daysText = '';
+      if (diffDays > 1) {
+        daysText = `até ${diffDays} dias`;
+      } else if (diffDays === 1) {
+        daysText = 'amanhã';
+      } else if (diffDays === 0) {
+        daysText = 'hoje';
+      } else {
+        daysText = 'entregue';
+      }
+      
+      shippingInfo += `- ${daysText} (${day}/${month})`;
+    } else if (ann.deliveryTime) {
+      shippingInfo += `- (${ann.deliveryTime.split(' por ser ')[0]})`;
     }
 
     const badgeClass = ann.isUnavailable ? 'score-low-text' : 
@@ -379,8 +458,8 @@ function openDetailsModal(productId) {
     tr.innerHTML = `
       <td class="tbl-deal-name" title="${ann.title}">${ann.title}</td>
       <td class="tbl-deal-price">${priceStr}</td>
-      <td style="font-size:0.8rem;">${ann.installmentsText || '-'}</td>
-      <td style="font-size:0.75rem; color:var(--text-secondary); max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${shippingInfo || 'Frete a calcular'}</td>
+      <td style="font-size:0.8rem; min-width:120px;">${ann.installmentsText || '-'}</td>
+      <td style="font-size:0.75rem; color:var(--text-secondary); min-width:140px;">${shippingInfo || 'Frete a calcular'}</td>
       <td><span class="announcement-score-badge ${badgeClass}">${scoreVal}</span></td>
       <td>
         <a href="${ann.url}" target="_blank" class="ml-link-anchor">
@@ -443,7 +522,6 @@ function renderChart(announcements) {
     priceChart.destroy();
   }
 
-  // Pre-configured colors for multiple announcements
   const chartColors = [
     '#9f7aea', // Purple
     '#00f2fe', // Cyan/Teal
@@ -454,33 +532,56 @@ function renderChart(announcements) {
   ];
 
   const datasets = [];
+  const priceType = document.getElementById('chart-price-type') ? document.getElementById('chart-price-type').value : 'cash';
 
   announcements.forEach((ann, index) => {
     const history = ann.priceHistory || [];
     if (history.length === 0) return;
 
-    // Map history to chart coordinates
-    const dataPoints = history.map(h => ({
-      x: h.date, // format YYYY-MM-DD
-      y: h.price
-    }));
-
-    // Choose color
     const color = chartColors[index % chartColors.length];
 
-    datasets.push({
-      label: ann.title.substring(0, 20) + '...',
-      data: dataPoints,
-      borderColor: color,
-      backgroundColor: color + '33', // transparency
-      borderWidth: 2.5,
-      pointBackgroundColor: color,
-      pointBorderColor: '#fff',
-      pointHoverRadius: 6,
-      pointRadius: 4,
-      tension: 0.15,
-      showLine: true // Force lines joining scatter points
-    });
+    // 1. Add Cash/Vista Price dataset
+    if (priceType === 'cash' || priceType === 'both') {
+      const dataPoints = history.map(h => ({
+        x: h.date,
+        y: h.price
+      }));
+      datasets.push({
+        label: `${ann.title.substring(0, 15)}... (à Vista)`,
+        data: dataPoints,
+        borderColor: color,
+        backgroundColor: color + '22',
+        borderWidth: 2.5,
+        pointBackgroundColor: color,
+        pointBorderColor: '#fff',
+        pointHoverRadius: 6,
+        pointRadius: 4,
+        tension: 0.15,
+        showLine: true
+      });
+    }
+
+    // 2. Add Installments Total dataset
+    if (priceType === 'installments' || priceType === 'both') {
+      const dataPoints = history.map(h => ({
+        x: h.date,
+        y: h.installmentsTotal || h.price
+      }));
+      datasets.push({
+        label: `${ann.title.substring(0, 15)}... (Parcelado)`,
+        data: dataPoints,
+        borderColor: color,
+        backgroundColor: 'transparent',
+        borderWidth: 2,
+        borderDash: [5, 5], // Dashed line for installments total
+        pointBackgroundColor: '#fff',
+        pointBorderColor: color,
+        pointHoverRadius: 5,
+        pointRadius: 3,
+        tension: 0.15,
+        showLine: true
+      });
+    }
   });
 
   priceChart = new Chart(ctx, {
@@ -592,4 +693,27 @@ document.getElementById('btn-sync-all').addEventListener('click', async () => {
 
 // Initial startup
 checkAuth();
+
+if (token) {
+  loadCategories();
+}
+
+// Category filter event listener
+const filterCategoryEl = document.getElementById('filter-category');
+if (filterCategoryEl) {
+  filterCategoryEl.addEventListener('change', () => {
+    loadDashboardData();
+  });
+}
+
 loadDashboardData();
+
+// Chart price type filter listener
+const chartPriceTypeEl = document.getElementById('chart-price-type');
+if (chartPriceTypeEl) {
+  chartPriceTypeEl.addEventListener('change', () => {
+    if (currentModalAnnouncements && currentModalAnnouncements.length > 0) {
+      renderChart(currentModalAnnouncements);
+    }
+  });
+}
