@@ -16,6 +16,7 @@ const AnnouncementSchema = new mongoose.Schema({
   deliveryDate: { type: Date, default: null },
   isFull: { type: Boolean, default: false },
   isFreeShipping: { type: Boolean, default: false },
+  seller: { type: String, default: null },
   isUnavailable: { type: Boolean, default: false }, // Paused, out of stock, or deleted
   scrapedAt: { type: Date, default: null },
   createdAt: { type: Date, default: Date.now }

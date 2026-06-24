@@ -142,6 +142,7 @@ export async function runCronScrape(specificLinkId) {
         currentAnn.deliveryDate = scraped.deliveryDate;
         currentAnn.isFull = scraped.isFull;
         currentAnn.isFreeShipping = scraped.isFreeShipping;
+        currentAnn.seller = scraped.seller || null;
         currentAnn.isUnavailable = false;
         currentAnn.scrapedAt = new Date();
         await currentAnn.save();

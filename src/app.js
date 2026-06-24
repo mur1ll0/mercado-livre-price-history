@@ -485,6 +485,7 @@ app.post('/api/products/track', authenticateToken, async (req, res) => {
                 deliveryDate: scraped.deliveryDate,
                 isFull: scraped.isFull,
                 isFreeShipping: scraped.isFreeShipping,
+                seller: scraped.seller || null,
                 isUnavailable: false,
                 scrapedAt: new Date()
               },

@@ -18,7 +18,7 @@
     "google-auth-library": "^10.7.0",
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^8.9.3",
-    "node-cron": "^3.0.3",
+    "node-cron": "^4.5.0",
     "puppeteer": "^25.1.0",
     "puppeteer-extra": "^3.3.6",
     "puppeteer-extra-plugin-stealth": "^2.11.2"
