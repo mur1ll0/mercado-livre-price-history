@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { width: 320px; font-family: system-ui, sans-serif; background: #0a0712; color: #f7fafc; padding: 16px; }
+    h2 { font-size: 1rem; margin-bottom: 12px; color: #00f2fe; }
+    label { font-size: 0.75rem; color: #a0aec0; display: block; margin-bottom: 4px; margin-top: 10px; }
+    input { width: 100%; padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1); background: #1b1633; color: #fff; font-size: 0.8rem; outline: none; }
+    input:focus { border-color: #805ad5; }
+    button { width: 100%; padding: 8px; margin-top: 12px; border-radius: 6px; border: none; font-weight: 600; cursor: pointer; font-size: 0.8rem; }
+    .btn-primary { background: linear-gradient(135deg, #805ad5, #6b46c1); color: #fff; }
+    .btn-secondary { background: #1b1633; border: 1px solid rgba(255,255,255,0.1); color: #fff; margin-top: 6px; }
+    .status { margin-top: 12px; padding: 8px; border-radius: 6px; font-size: 0.75rem; line-height: 1.4; }
+    .status-ok { background: rgba(16,185,129,0.15); color: #10b981; border: 1px solid rgba(16,185,129,0.3); }
+    .status-warn { background: rgba(237,137,54,0.15); color: #ed8936; border: 1px solid rgba(237,137,54,0.3); }
+    .status-err { background: rgba(229,62,62,0.15); color: #e53e3e; border: 1px solid rgba(229,62,62,0.3); }
+    .hidden { display: none !important; }
+    hr { border: none; border-top: 1px solid rgba(255,255,255,0.08); margin: 12px 0; }
+    .help-text { font-size: 0.65rem; color: #a0aec0; margin-top: 4px; }
+    .connected-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #10b981; margin-right: 4px; animation: pulse 2s infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+  </style>
+</head>
+<body>
+  <h2>ML Price Tracker</h2>
+
+  <div id="statusEl" class="status hidden"></div>
+
+  <div id="autoSection">
+    <p style="font-size:0.8rem; color:#a0aec0; margin-bottom:8px;">
+      A extensão detecta automaticamente seu login ao abrir o site.
+    </p>
+  </div>
+
+  <div id="configSection" class="hidden">
+    <label for="apiBaseInput">API Base URL</label>
+    <input type="url" id="apiBaseInput" placeholder="http://localhost:3000" />
+
+    <label for="jwtInput">JWT Token (opcional)</label>
+    <input type="password" id="jwtInput" placeholder="Auto-detectado ao abrir o site" />
+    <p class="help-text">Deixe em branco — o token é preenchido automaticamente ao visitar o site.</p>
+
+    <button class="btn-primary" id="saveBtn">Salvar URL</button>
+    <button class="btn-secondary" id="clearBtn">Resetar</button>
+  </div>
+
+  <button class="btn-primary" id="triggerBtn" style="margin-top:12px;">Forçar Atualização Agora</button>
+
+  <p id="toggleConfig" style="text-align:center; font-size:0.65rem; color:var(--accent-cyan); cursor:pointer; margin-top:8px;">Configuração manual...</p>
+
+  <hr />
+  <p class="help-text" style="text-align:center;">Polling automático a cada 60s</p>
+
+  <script src="popup.js"></script>
+</body>
+</html>

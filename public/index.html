@@ -32,6 +32,13 @@
       </div>
       
       <div class="actions-area" style="display: flex; align-items: center; gap: 1.2rem;">
+        <button id="btn-connect-extension" class="btn btn-secondary flex-btn" style="font-size:0.75rem; padding:0.35rem 0.7rem;" title="Conectar extensão do navegador">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+          </svg>
+          Conectar Extensão
+        </button>
         <button id="btn-sync-all" class="btn btn-secondary flex-btn">
           <svg class="icon-spin" id="sync-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l.73-.73" />
@@ -227,11 +234,11 @@
               <thead>
                 <tr>
                   <th>Anúncio</th>
-                  <th>Preço Atual</th>
+                  <th>Preço</th>
+                  <th>Vendedor</th>
                   <th>Parcelamento</th>
                   <th>Envio</th>
                   <th>Score</th>
-                  <th>Link</th>
                 </tr>
               </thead>
               <tbody id="modal-comparison-tbody">
@@ -242,6 +249,43 @@
         </div>
       </div>
     </div>
+  </div>
+
+  <!-- Extension Installation Modal -->
+  <div id="extension-modal" class="modal-overlay hidden">
+    <div class="modal-content glass-panel" style="max-width: 480px; text-align: center;">
+      <div class="modal-header">
+        <h3>Extensão Necessária</h3>
+        <button id="close-extension-modal-btn" class="close-btn">
+          <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      </div>
+      <p style="color: var(--text-secondary); margin-bottom: 1.2rem; font-size: 0.9rem;">
+        Para coletar preços atualizados no Vercel, instale a extensão no seu navegador.
+      </p>
+      <div style="display: flex; gap: 0.8rem; justify-content: center; flex-wrap: wrap;">
+        <a id="dl-chrome-extension" href="/extensions/chrome.zip" download class="btn btn-primary" style="text-decoration: none;">
+          Instalar para Chrome
+        </a>
+        <a id="dl-firefox-extension" href="/extensions/firefox.zip" download class="btn btn-secondary" style="text-decoration: none;">
+          Instalar para Firefox
+        </a>
+      </div>
+      <p style="font-size: 0.7rem; color: var(--text-secondary); margin-top: 1rem;">
+        Ou <a href="#" id="local-instructions-link" style="color: var(--accent-cyan);">rode localmente</a> com Docker / Node.js
+      </p>
+      <div id="local-instructions-box" class="hidden" style="margin-top: 0.8rem; background: var(--bg-tertiary); border-radius: 8px; padding: 0.8rem; text-align: left; font-size: 0.7rem; color: var(--text-secondary);">
+        <code style="color: var(--accent-cyan);">git clone &lt;repo&gt; && npm install && npm run dev</code>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scrape Status Banner -->
+  <div id="scrape-status-banner" class="scrape-status-banner hidden">
+    <span id="scrape-status-icon"></span>
+    <span id="scrape-status-message"></span>
   </div>
 
   <!-- Initial State Injection -->

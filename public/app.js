@@ -4,8 +4,12 @@ let user = null;
 let productsData = [];
 let priceChart = null;
 let currentModalAnnouncements = [];
+let extensionDetected = false;
+let pollIntervalId = null;
+let scrapeBannerTimeout = null;
 
 const apiHost = window.location.origin;
+const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
 // 1. Session check on page load
 function checkAuth() {
@@ -34,6 +38,164 @@ function logout() {
   localStorage.removeItem('ml_user');
   window.location.href = '/login.html';
 }
+
+// Detect if browser extension is installed
+function detectExtension() {
+  if (isLocalhost) return;
+  if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+    try {
+      chrome.runtime.sendMessage('dummy-id-placeholder', { type: 'PING' }, function() {});
+    } catch (e) {}
+  }
+  window.postMessage({ type: 'ML_TRACKER_PING', source: 'ml-price-tracker-web' }, '*');
+}
+
+window.addEventListener('message', function(event) {
+  if (event.data && event.data.type === 'ML_TRACKER_PONG') {
+    extensionDetected = true;
+  }
+});
+
+// Immediately try detection
+detectExtension();
+setTimeout(function() {
+  if (!isLocalhost && !extensionDetected && localStorage.getItem('ml_token')) {
+  }
+}, 2000);
+
+// Scrape Status Polling
+function startStatusPolling() {
+  if (pollIntervalId) stopStatusPolling();
+  pollIntervalId = setInterval(pollScrapeStatus, 2000);
+  pollScrapeStatus(); // immediate first check
+}
+
+function stopStatusPolling() {
+  if (pollIntervalId) {
+    clearInterval(pollIntervalId);
+    pollIntervalId = null;
+  }
+}
+
+async function pollScrapeStatus() {
+  try {
+    const res = await fetch(`${apiHost}/api/scrape/status`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!res.ok) return;
+    const status = await res.json();
+
+    if (status.state === 'idle') {
+      hideScrapeBanner();
+      stopStatusPolling();
+      return;
+    }
+
+    showScrapeBanner(status.state, status.message);
+
+    if (status.state === 'done' || status.state === 'error') {
+      stopStatusPolling();
+      hideScrapeBanner();
+      setTimeout(function() { loadDashboardData(); }, 500);
+    }
+  } catch (e) {
+    // ignore polling errors
+  }
+}
+
+function showScrapeBanner(state, message) {
+  const banner = document.getElementById('scrape-status-banner');
+  if (!banner) return;
+  banner.className = `scrape-status-banner ${state}`;
+  banner.classList.remove('hidden');
+
+  const icon = document.getElementById('scrape-status-icon');
+  const msg = document.getElementById('scrape-status-message');
+
+  if (icon) {
+    if (state === 'running') {
+      icon.innerHTML = '<span class="scrape-status-icon-spin"></span>';
+    } else if (state === 'done') {
+      icon.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>';
+    } else if (state === 'error') {
+      icon.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>';
+    } else if (state === 'needs_login') {
+      icon.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/></svg>';
+    }
+  }
+  if (msg) msg.textContent = message;
+}
+
+function hideScrapeBanner() {
+  const banner = document.getElementById('scrape-status-banner');
+  if (banner) banner.classList.add('hidden');
+  if (scrapeBannerTimeout) { clearTimeout(scrapeBannerTimeout); scrapeBannerTimeout = null; }
+}
+
+// Extension Installation Modal
+function showExtensionModal() {
+  const modal = document.getElementById('extension-modal');
+  if (modal) modal.classList.remove('hidden');
+}
+
+function hideExtensionModal() {
+  const modal = document.getElementById('extension-modal');
+  if (modal) modal.classList.add('hidden');
+}
+
+// Local instructions toggle
+document.addEventListener('DOMContentLoaded', function() {
+  var localLink = document.getElementById('local-instructions-link');
+  var localBox = document.getElementById('local-instructions-box');
+  if (localLink && localBox) {
+    localLink.addEventListener('click', function(e) {
+      e.preventDefault();
+      localBox.classList.toggle('hidden');
+    });
+  }
+
+  var closeExtBtn = document.getElementById('close-extension-modal-btn');
+  if (closeExtBtn) {
+    closeExtBtn.addEventListener('click', hideExtensionModal);
+  }
+
+  var extModal = document.getElementById('extension-modal');
+  if (extModal) {
+    extModal.addEventListener('click', function(e) {
+      if (e.target.id === 'extension-modal') hideExtensionModal();
+    });
+  }
+
+  var connectBtn = document.getElementById('btn-connect-extension');
+  if (connectBtn) {
+    connectBtn.addEventListener('click', function() {
+      var cfg = {
+        type: 'ML_CONFIGURE_EXTENSION',
+        source: 'ml-price-tracker-web',
+        apiBase: window.location.origin,
+        jwtToken: token
+      };
+      window.postMessage(cfg, '*');
+      connectBtn.textContent = 'Enviado!';
+      connectBtn.disabled = true;
+      setTimeout(function() {
+        connectBtn.textContent = 'Conectar Extensão';
+        connectBtn.disabled = false;
+      }, 3000);
+    });
+  }
+
+  window.addEventListener('message', function(event) {
+    if (event.data && event.data.type === 'ML_TRACKER_PONG' && event.data.source === 'ml-price-tracker-extension') {
+      extensionDetected = true;
+    }
+    if (event.data && event.data.type === 'ML_TRACKER_CONFIGURED' && event.data.source === 'ml-price-tracker-extension') {
+      extensionDetected = true;
+      var btn = document.getElementById('btn-connect-extension');
+      if (btn) { btn.textContent = 'Conectado!'; btn.style.color = '#10b981'; }
+    }
+  });
+});
 
 // Attach logout event
 document.getElementById('btn-logout').addEventListener('click', logout);
@@ -112,7 +274,6 @@ async function loadCategories() {
 function renderStats() {
   document.getElementById('stat-total-products').textContent = productsData.length;
   
-  // Calculate average discount
   let totalDiscount = 0;
   let productsWithDiscount = 0;
   let bestOpportunityAnn = null;
@@ -123,7 +284,6 @@ function renderStats() {
       totalDiscount += prod.avgDiscount;
       productsWithDiscount++;
     }
-    // Find best overall announcement score
     (prod.announcements || []).forEach(ann => {
       if (!ann.isUnavailable && ann.costBenefitScore > bestScore) {
         bestScore = ann.costBenefitScore;
@@ -142,6 +302,93 @@ function renderStats() {
   } else {
     bestDealEl.textContent = '-';
   }
+}
+
+function getAnnouncementPrice(ann) {
+  if (ann.type === 'catalog' && ann.offers) {
+    return ann.offers.BEST_PRICE?.price || ann.offers.BEST_INSTALLMENTS?.price || null;
+  }
+  return ann.price;
+}
+
+function getAnnouncementSeller(ann) {
+  if (ann.type === 'catalog' && ann.offers) {
+    return ann.offers.BEST_PRICE?.seller || ann.offers.BEST_INSTALLMENTS?.seller || null;
+  }
+  return ann.seller;
+}
+
+function getAnnouncementInstallments(ann) {
+  if (ann.type === 'catalog' && ann.offers) {
+    return ann.offers.BEST_INSTALLMENTS?.installmentsText || ann.offers.BEST_PRICE?.installmentsText || '-';
+  }
+  return ann.installmentsText || '-';
+}
+
+function formatShipping(ann) {
+  var isFree, isFull, deliveryDate, shippingCost;
+  if (ann.type === 'catalog' && ann.offers) {
+    var bp = ann.offers.BEST_PRICE || {};
+    isFree = bp.isFreeShipping;
+    isFull = bp.isFull;
+    deliveryDate = bp.deliveryDate || null;
+    shippingCost = bp.shippingCost;
+  } else {
+    isFree = ann.isFreeShipping;
+    isFull = ann.isFull;
+    deliveryDate = ann.deliveryDate || null;
+    shippingCost = ann.shippingCost;
+  }
+
+  var parts = [];
+
+  if (isFull) parts.push('⚡Full');
+  if (isFree && !isFull) parts.push('Grátis');
+
+  if (deliveryDate) {
+    var delDate = new Date(deliveryDate);
+    delDate.setHours(0,0,0,0);
+    var today = new Date();
+    today.setHours(0,0,0,0);
+    var diffDays = Math.ceil((delDate - today) / (1000 * 60 * 60 * 24));
+    var weekdays = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
+    var day = delDate.getDate();
+    var months = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+    var month = months[delDate.getMonth()];
+    var weekday = weekdays[delDate.getDay()];
+
+    var daysStr = '';
+    if (diffDays <= 0) daysStr = 'hoje';
+    else if (diffDays === 1) daysStr = 'amanhã';
+    else daysStr = 'até ' + diffDays + ' dias';
+
+    var costStr = isFree ? 'Grátis' : '';
+    if (!isFree && shippingCost != null) {
+      costStr = 'por R$' + shippingCost.toFixed(2).replace('.', ',');
+    }
+    parts.push(costStr + ' ' + daysStr + ' (' + day + '/' + month + ' ' + weekday + ')'.trim());
+  } else {
+    parts.push('Consulte prazos no link');
+  }
+
+  return {
+    displayText: parts.join(' ') || 'Consulte prazos no link',
+    isFree: isFree,
+    isFull: isFull,
+    deliveryDate: deliveryDate,
+    shippingCost: shippingCost
+  };
+}
+
+function getAnnouncementShipping(ann) {
+  var ship = formatShipping(ann);
+  return { isFree: ship.isFree, isFull: ship.isFull, deliveryDate: ship.deliveryDate };
+}
+
+function getBestDeal(announcements) {
+  const active = (announcements || []).filter(a => !a.isUnavailable);
+  if (active.length === 0) return null;
+  return active.reduce((best, a) => (a.costBenefitScore > best.costBenefitScore ? a : best), active[0]);
 }
 
 // 4. Render product cards
@@ -166,10 +413,8 @@ function renderProductsList() {
 
   productsData.forEach(prod => {
     const card = document.createElement('div');
-    
-    // Sort announcements to get the best active deal
-    const activeAnnouncements = (prod.announcements || []).filter(ann => !ann.isUnavailable);
-    const bestDeal = activeAnnouncements.length > 0 ? activeAnnouncements[0] : null;
+    const announcements = prod.announcements || [];
+    const bestDeal = getBestDeal(announcements);
     
     let scoreClass = 'score-low';
     let scoreText = 'Regular';
@@ -187,18 +432,21 @@ function renderProductsList() {
     card.className = `product-card ${scoreClass}`;
     
     const imageSrc = prod.image || 'https://http2.mlstatic.com/frontend-assets/ml-web-navigation/img/social/ML_logo.png';
-    const bestPriceFormatted = bestDeal && bestDeal.price !== null ? `R$ ${bestDeal.price.toLocaleString('pt-BR')}` : 'Indisponível';
+    const bestPrice = bestDeal ? getAnnouncementPrice(bestDeal) : null;
+    const bestPriceFormatted = bestPrice !== null ? `R$ ${bestPrice.toLocaleString('pt-BR')}` : 'Indisponível';
     
     // Build mini-list of announcements
     let announcementsHtml = '';
-    if (prod.announcements && prod.announcements.length > 0) {
+    if (announcements.length > 0) {
       announcementsHtml = `
         <div class="product-announcements-list">
-          <h4>Anúncios Vinculados (${prod.announcements.length})</h4>
-          ${prod.announcements.slice(0, 3).map(ann => {
-            const priceStr = ann.price !== null ? `R$ ${ann.price.toLocaleString('pt-BR')}` : 'Indisponível';
-            const fullBadge = ann.isFull ? `<span class="mini-badge mb-full">Full</span>` : '';
-            const freeBadge = ann.isFreeShipping ? `<span class="mini-badge mb-free">Grátis</span>` : '';
+          <h4>Anúncios Vinculados (${announcements.length})</h4>
+          ${announcements.slice(0, 3).map(ann => {
+            const annPrice = getAnnouncementPrice(ann);
+            const priceStr = annPrice !== null ? `R$ ${annPrice.toLocaleString('pt-BR')}` : 'Indisponível';
+            const ship = formatShipping(ann);
+            const seller = getAnnouncementSeller(ann);
+            const sellerStr = seller ? `<span class="ann-seller">${seller}</span>` : '';
             const statusClass = ann.isUnavailable ? 'score-low-text' : 
                                (ann.costBenefitScore >= 80 ? 'score-high-text' : 
                                (ann.costBenefitScore >= 50 ? 'score-med-text' : 'score-low-text'));
@@ -207,7 +455,7 @@ function renderProductsList() {
               <div class="announcement-row">
                 <div class="announcement-info-left">
                   <span class="announcement-name" title="${ann.title}">${ann.title}</span>
-                  <span class="announcement-badges">${fullBadge}${freeBadge}</span>
+                  <div class="ann-meta-row">${sellerStr}<span class="ann-ship-info">${ship.displayText}</span></div>
                 </div>
                 <div class="announcement-info-right">
                   <span class="announcement-price">${priceStr}</span>
@@ -216,7 +464,7 @@ function renderProductsList() {
               </div>
             `;
           }).join('')}
-          ${prod.announcements.length > 3 ? `<p style="font-size:0.75rem; color:var(--text-secondary); text-align:right; margin-top:0.2rem;">+ ${prod.announcements.length - 3} outros anúncios...</p>` : ''}
+          ${announcements.length > 3 ? `<p style="font-size:0.75rem; color:var(--text-secondary); text-align:right; margin-top:0.2rem;">+ ${announcements.length - 3} outros anúncios...</p>` : ''}
         </div>
       `;
     }
@@ -227,7 +475,7 @@ function renderProductsList() {
           <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
         </svg>
         <span class="rating-value">${prod.rating.toFixed(1)}</span>
-        <span class="rating-count">(${prod.reviewsCount})</span>
+        <span class="rating-count">(${prod.reviewsCount} opiniões)</span>
       </div>
     ` : '<span style="font-size:0.72rem; color:var(--text-secondary);">Sem avaliações</span>';
 
@@ -247,14 +495,14 @@ function renderProductsList() {
         <div>
           <h3 class="product-title" title="${prod.name}">${prod.name}</h3>
           <div class="product-meta-row">
-            <span class="product-category" title="${prod.category}">${prod.category}</span>
+            <span class="product-category">${prod.categories?.[prod.categories.length - 1]?.split(' > ').pop() || 'Geral'}</span>
             ${ratingRow}
           </div>
           
           <div class="product-price-info">
             <div class="price-badge-container">
               <span class="price-tag">${bestPriceFormatted}</span>
-              ${prod.avgDiscount > 0 ? `<span class="discount-pill">-${prod.avgDiscount.toFixed(0)}%</span>` : ''}
+              ${bestDeal && bestDeal.discountPercent > 0 ? `<span class="discount-pill">-${bestDeal.discountPercent}%</span>` : ''}
             </div>
           </div>
           
@@ -338,12 +586,8 @@ document.getElementById('add-product-form').addEventListener('submit', async (e)
       succDiv.textContent = data.message || 'Produto adicionado com sucesso! Carregando dados...';
       succDiv.classList.remove('hidden');
       urlInput.value = '';
-      
-      // Reload dashboard in 3 seconds to fetch details
-      setTimeout(() => {
-        loadDashboardData();
-        succDiv.classList.add('hidden');
-      }, 3000);
+      startStatusPolling();
+      setTimeout(() => succDiv.classList.add('hidden'), 3000);
       
     } else {
       errDiv.textContent = data.error || 'Ocorreu um erro ao processar o link.';
@@ -413,60 +657,50 @@ function openDetailsModal(productId) {
   tbody.innerHTML = '';
 
   prod.announcements.forEach(ann => {
-    const tr = document.createElement('tr');
-    
-    const priceStr = ann.price !== null ? `R$ ${ann.price.toLocaleString('pt-BR')}` : 'Pausado/Indisponível';
-    
-    // Shipping text
-    let shippingInfo = '';
-    if (ann.isFreeShipping) shippingInfo += 'Grátis ';
-    if (ann.isFull) shippingInfo += '⚡Full ';
-    
-    if (ann.deliveryDate) {
-      const delDate = new Date(ann.deliveryDate);
-      const today = new Date();
-      today.setHours(0,0,0,0);
-      delDate.setHours(0,0,0,0);
-      const diffTime = delDate - today;
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      
-      const day = delDate.getDate();
-      const monthNames = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
-      const month = monthNames[delDate.getMonth()];
-      
-      let daysText = '';
-      if (diffDays > 1) {
-        daysText = `até ${diffDays} dias`;
-      } else if (diffDays === 1) {
-        daysText = 'amanhã';
-      } else if (diffDays === 0) {
-        daysText = 'hoje';
-      } else {
-        daysText = 'entregue';
-      }
-      
-      shippingInfo += `- ${daysText} (${day}/${month})`;
-    } else if (ann.deliveryTime) {
-      shippingInfo += `- (${ann.deliveryTime.split(' por ser ')[0]})`;
-    }
-
-    const badgeClass = ann.isUnavailable ? 'score-low-text' : 
+    const seller = getAnnouncementSeller(ann) || '-';
+    const statusClass = ann.isUnavailable ? 'score-low-text' : 
                        (ann.costBenefitScore >= 80 ? 'score-high-text' : 
                        (ann.costBenefitScore >= 50 ? 'score-med-text' : 'score-low-text'));
     const scoreVal = ann.isUnavailable ? 'Pausado' : `${ann.costBenefitScore}/100`;
+    const annUrl = ann.url || '';
 
-    tr.innerHTML = `
-      <td class="tbl-deal-name" title="${ann.title}">${ann.title}</td>
-      <td class="tbl-deal-price">${priceStr}</td>
-      <td style="font-size:0.8rem; min-width:120px;">${ann.installmentsText || '-'}</td>
-      <td style="font-size:0.75rem; color:var(--text-secondary); min-width:140px;">${shippingInfo || 'Frete a calcular'}</td>
-      <td><span class="announcement-score-badge ${badgeClass}">${scoreVal}</span></td>
-      <td>
-        <a href="${ann.url}" target="_blank" class="ml-link-anchor">
-          Ir ↗
-        </a>
-      </td>
-    `;
+    const tr = document.createElement('tr');
+
+    if (ann.type === 'catalog' && ann.offers) {
+      var bp = ann.offers.BEST_PRICE;
+      var bi = ann.offers.BEST_INSTALLMENTS;
+      var bpPrice = bp && bp.price ? 'R$ ' + bp.price.toLocaleString('pt-BR') : '-';
+      var bpShip = bp ? formatShipping({ type: 'catalog', offers: { BEST_PRICE: bp } }) : { displayText: '-' };
+      var installmentsStr = bi && bi.installmentsText ? bi.installmentsText : '-';
+      var biShip = bi ? formatShipping({ type: 'catalog', offers: { BEST_PRICE: bi } }) : null;
+
+      tr.innerHTML = `
+        <td class="tbl-deal-name" title="${ann.title}">
+          <a href="${annUrl}" target="_blank" class="ml-link-anchor">${ann.title}</a>
+        </td>
+        <td class="tbl-deal-price">${bpPrice}</td>
+        <td style="font-size:0.8rem;">${seller}</td>
+        <td style="font-size:0.8rem;">${installmentsStr}</td>
+        <td style="font-size:0.75rem; color:var(--text-secondary); max-width:250px;">${bpShip.displayText}</td>
+        <td><span class="announcement-score-badge ${statusClass}">${scoreVal}</span></td>
+      `;
+    } else {
+      const annPrice = getAnnouncementPrice(ann);
+      const annInstallments = getAnnouncementInstallments(ann);
+      const priceStr = annPrice !== null ? `R$ ${annPrice.toLocaleString('pt-BR')}` : 'Indisponível';
+      const ship = formatShipping(ann);
+
+      tr.innerHTML = `
+        <td class="tbl-deal-name" title="${ann.title}">
+          <a href="${annUrl}" target="_blank" class="ml-link-anchor">${ann.title}</a>
+        </td>
+        <td class="tbl-deal-price">${priceStr}</td>
+        <td style="font-size:0.8rem;">${seller}</td>
+        <td style="font-size:0.8rem;">${annInstallments}</td>
+        <td style="font-size:0.75rem; color:var(--text-secondary); max-width:250px;">${ship.displayText}</td>
+        <td><span class="announcement-score-badge ${statusClass}">${scoreVal}</span></td>
+      `;
+    }
     tbody.appendChild(tr);
   });
 
@@ -479,6 +713,11 @@ function openDetailsModal(productId) {
   const updateIcon = document.getElementById('modal-update-icon');
   
   updateBtn.onclick = async () => {
+    if (!isLocalhost && !extensionDetected) {
+      showExtensionModal();
+      return;
+    }
+
     updateBtn.disabled = true;
     updateText.textContent = 'Enviando comando...';
     updateIcon.classList.add('active');
@@ -492,14 +731,18 @@ function openDetailsModal(productId) {
       });
       
       const resData = await res.json();
-      alert(resData.message || 'Sincronização agendada com sucesso!');
+
+      if (isLocalhost) {
+        alert(resData.message || 'Sincronização agendada com sucesso!');
+      } else {
+        startStatusPolling();
+      }
       
-      // Delay to fetch reload
       setTimeout(() => {
         loadDashboardData().then(() => {
-          modal.classList.add('hidden'); // Close modal to refresh details on click
+          modal.classList.add('hidden');
         });
-      }, 4000);
+      }, isLocalhost ? 4000 : 15000);
       
     } catch (err) {
       console.error(err);
@@ -539,15 +782,20 @@ function renderChart(announcements) {
     if (history.length === 0) return;
 
     const color = chartColors[index % chartColors.length];
+    const shortTitle = ann.title ? ann.title.substring(0, 20) + '...' : 'Anúncio';
+
+    // Separate history by offerKey for catalog announcements
+    const cashHistory = history.filter(h => !h.offerKey || h.offerKey === 'BEST_PRICE');
+    const installmentHistory = history.filter(h => h.offerKey === 'BEST_INSTALLMENTS' && h.installmentsTotal != null);
 
     // 1. Add Cash/Vista Price dataset
-    if (priceType === 'cash' || priceType === 'both') {
-      const dataPoints = history.map(h => ({
+    if ((priceType === 'cash' || priceType === 'both') && cashHistory.length > 0) {
+      const dataPoints = cashHistory.map(h => ({
         x: h.date,
         y: h.price
       }));
       datasets.push({
-        label: `${ann.title.substring(0, 15)}... (à Vista)`,
+        label: `${shortTitle} (à Vista)`,
         data: dataPoints,
         borderColor: color,
         backgroundColor: color + '22',
@@ -562,18 +810,18 @@ function renderChart(announcements) {
     }
 
     // 2. Add Installments Total dataset
-    if (priceType === 'installments' || priceType === 'both') {
-      const dataPoints = history.map(h => ({
+    if ((priceType === 'installments' || priceType === 'both') && installmentHistory.length > 0) {
+      const dataPoints = installmentHistory.map(h => ({
         x: h.date,
         y: h.installmentsTotal || h.price
       }));
       datasets.push({
-        label: `${ann.title.substring(0, 15)}... (Parcelado)`,
+        label: `${shortTitle} (Parcelado)`,
         data: dataPoints,
         borderColor: color,
         backgroundColor: 'transparent',
         borderWidth: 2,
-        borderDash: [5, 5], // Dashed line for installments total
+        borderDash: [5, 5],
         pointBackgroundColor: '#fff',
         pointBorderColor: color,
         pointHoverRadius: 5,
@@ -581,6 +829,31 @@ function renderChart(announcements) {
         tension: 0.15,
         showLine: true
       });
+    }
+
+    // For normal announcements (no offerKey), fallback to old behavior
+    if (installmentHistory.length === 0 && (priceType === 'installments' || priceType === 'both')) {
+      const normalHistory = history.filter(h => !h.offerKey && h.installmentsTotal != null);
+      if (normalHistory.length > 0) {
+        const dataPoints = normalHistory.map(h => ({
+          x: h.date,
+          y: h.installmentsTotal || h.price
+        }));
+        datasets.push({
+          label: `${shortTitle} (Parcelado)`,
+          data: dataPoints,
+          borderColor: color,
+          backgroundColor: 'transparent',
+          borderWidth: 2,
+          borderDash: [5, 5],
+          pointBackgroundColor: '#fff',
+          pointBorderColor: color,
+          pointHoverRadius: 5,
+          pointRadius: 3,
+          tension: 0.15,
+          showLine: true
+        });
+      }
     }
   });
 
@@ -658,6 +931,11 @@ document.getElementById('details-modal').addEventListener('click', (e) => {
 
 // 9. Sync All trigger button
 document.getElementById('btn-sync-all').addEventListener('click', async () => {
+  if (!isLocalhost && !extensionDetected) {
+    showExtensionModal();
+    return;
+  }
+
   const syncBtn = document.getElementById('btn-sync-all');
   const syncText = document.getElementById('sync-text');
   const syncIcon = document.getElementById('sync-icon');
@@ -674,12 +952,12 @@ document.getElementById('btn-sync-all').addEventListener('click', async () => {
       }
     });
 
-    const data = await res.json();
-    alert(data.message || 'Sincronização iniciada com sucesso!');
-    
+    await res.json();
+    startStatusPolling();
+
     setTimeout(() => {
       loadDashboardData();
-    }, 5000);
+    }, 15000);
 
   } catch (err) {
     console.error(err);
@@ -707,6 +985,10 @@ if (filterCategoryEl) {
 }
 
 loadDashboardData();
+
+if (!isLocalhost) {
+  startStatusPolling();
+}
 
 // Chart price type filter listener
 const chartPriceTypeEl = document.getElementById('chart-price-type');

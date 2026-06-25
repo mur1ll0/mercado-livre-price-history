@@ -4,10 +4,7 @@ import crypto from 'crypto';
 const UnifiedProductSchema = new mongoose.Schema({
   _id: { type: String, default: () => crypto.randomUUID() },
   name: { type: String, required: true },
-  category: { type: String, required: true },
-  rating: { type: Number, default: null },
-  reviewsCount: { type: Number, default: 0 },
-  aiSummary: { type: String, default: '' },
+  categories: [{ type: String, ref: 'Category' }], // Category._id references (full paths)
   image: { type: String, default: '' },
   createdAt: { type: Date, default: Date.now }
 });

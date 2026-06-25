@@ -554,6 +554,27 @@ body {
   min-height: 15px;
 }
 
+.ann-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  font-size: 0.7rem;
+}
+
+.ann-seller {
+  color: var(--text-secondary);
+  max-width: 100px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ann-ship-info {
+  color: var(--text-secondary);
+  font-size: 0.68rem;
+}
+
 .mini-badge {
   font-size: 0.65rem;
   padding: 0.05rem 0.3rem;
@@ -830,6 +851,63 @@ body {
 
 .hidden {
   display: none !important;
+}
+
+/* Scrape Status Banner */
+.scrape-status-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 200;
+  padding: 0.6rem 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  transition: var(--transition);
+  animation: slideDown 0.3s ease;
+}
+
+@keyframes slideDown {
+  from { transform: translateY(-100%); }
+  to { transform: translateY(0); }
+}
+
+.scrape-status-banner.running {
+  background: linear-gradient(135deg, #1b1633, #2d2255);
+  border-bottom: 1px solid var(--accent-color);
+  color: var(--accent-cyan);
+}
+
+.scrape-status-banner.done {
+  background: linear-gradient(135deg, #0d2818, #145c32);
+  border-bottom: 1px solid var(--accent-green);
+  color: #a7f3d0;
+}
+
+.scrape-status-banner.error {
+  background: linear-gradient(135deg, #2d1216, #5c1a1a);
+  border-bottom: 1px solid var(--accent-red);
+  color: #feb2b2;
+}
+
+.scrape-status-banner.needs_login {
+  background: linear-gradient(135deg, #2d1a0e, #5c3a1a);
+  border-bottom: 1px solid var(--accent-orange);
+  color: #fed7aa;
+}
+
+.scrape-status-icon-spin {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
 }
 
 /* Modal links styling */
