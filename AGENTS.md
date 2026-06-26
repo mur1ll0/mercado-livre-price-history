@@ -9,6 +9,7 @@ Mercado Livre price tracker with AI-based product deduplication. Node.js/Express
 ```bash
 npm run dev           # Start local server (node src/server.js)
 npm run test-scraper  # Test scraper against hardcoded URLs
+npm run test-openrouter # Test OpenRouter API connection
 npm start             # Same as dev (production start)
 npm run clean-db      # Drop all MongoDB collections (fresh start)
 npm run build         # Package extensions as ZIP files
@@ -144,9 +145,12 @@ extensions/
 
 ## Debug Scripts
 
-- `src/test-openrouter.js` — Test OpenRouter API connection
-- `src/debug-s-fallback.js` — Inspect /s page DOM structure
-- `src/test-buybox-html.js` — Dump buybox element structure
-- `src/test-bookmark-scrape.js` — Test scraping with bookmarks
-- `src/test-page-prices.js` — List all prices/sellers on a page
-- `scratch_inspect_links.js` — Generic HTML inspector
+All debug scripts live in `test/`. See `test/README.md` for full list.
+
+- `npm run test-openrouter` — Test OpenRouter API connection
+- `npm run test-scraper` — Test Puppeteer scraper against hardcoded URLs
+- `test/inspect-s-fallback.js` — Inspect /s page DOM structure
+- `test/inspect-buybox.js` — Dump buybox element structure
+- `test/inspect-bookmark.js` — Test scraping with bookmarks
+- `test/inspect-page-prices.js` — List all prices/sellers on a page
+- `test/inspect-links.js` — Generic HTML inspector for multiple URLs

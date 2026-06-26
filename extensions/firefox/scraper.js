@@ -103,11 +103,9 @@ function extractCommonFields(doc) {
   title = title.replace(/\s*\|\s*frete\s*grátis.*/i, '').trim();
 
   let image = '';
-  const galleryImg = doc.querySelector('.ui-pdp-gallery__figure__container img, .ui-pdp-gallery__figure img, .ui-pdp-image');
+  const galleryImg = doc.querySelector('.ui-pdp-gallery__figure__image');
   if (galleryImg) {
-    image = galleryImg.getAttribute('data-zoom') ||
-            galleryImg.getAttribute('data-src') ||
-            galleryImg.getAttribute('src') || '';
+    image = galleryImg.getAttribute('data-zoom') || galleryImg.getAttribute('src') || '';
   }
 
   const ratingText = doc.querySelector('.ui-pdp-review__rating')?.textContent?.trim() || '';
