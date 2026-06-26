@@ -367,9 +367,9 @@ function extractOfferData(container, doc) {
 
   let isFreeShipping = lowerText.includes('frete grátis') || lowerText.includes('chegará grátis');
   const containerHtml = container.innerHTML || '';
-  let isFull = containerHtml.includes('ui-pdp-icon--full') || containerHtml.includes('poly-shipping__promise-icon--full') ||
-    containerHtml.includes('full-shipping') || lowerText.includes('armazenado e enviado pelo full') ||
-    lowerText.includes('enviado pelo full') || lowerText.includes('pelo full') || lowerText.includes('por full');
+  let isFull = containerHtml.includes('ui-pdp-icon--full') ||
+    lowerText.includes('armazenado e enviado pelo full') ||
+    lowerText.includes('enviado pelo full');
 
   let shippingCost = isFreeShipping ? 0 : null;
   if (!isFreeShipping) {
@@ -433,8 +433,9 @@ function scrapeNormalListing(doc, html) {
   }
 
   if (!offerData.isFull) {
-    offerData.isFull = html.includes('ui-pdp-icon--full') || html.includes('poly-shipping__promise-icon--full') ||
-      lowerBodyText.includes('armazenado e enviado pelo full');
+    offerData.isFull = html.includes('ui-pdp-icon--full') ||
+      lowerBodyText.includes('armazenado e enviado pelo full') ||
+      lowerBodyText.includes('enviado pelo full');
   }
 
   // If buybox didn't have seller or delivery, try extracting from the full page
