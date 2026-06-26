@@ -324,7 +324,7 @@ app.post('/api/products/track', authenticateToken, async (req, res) => {
     });
     await tempProduct.save();
 
-    updateScrapeStatus(req.user.id, 'running', 'Coletando dados do novo anúncio...');
+    await updateScrapeStatus(req.user.id, 'running', 'Coletando dados do novo anúncio...');
 
     res.status(202).json({
       message: 'Anúncio adicionado! A coleta de dados será iniciada automaticamente.',
@@ -527,7 +527,7 @@ app.post('/api/products/scrape/:productId', authenticateToken, async (req, res) 
       { productId, userId: req.user.id, isUnavailable: { $ne: true } },
       { scrapeStatus: 'pending' }
     );
-    updateScrapeStatus(req.user.id, 'running', 'Aguardando extensão para coletar preços...');
+    await updateScrapeStatus(req.user.id, 'running', 'Aguardando extensão para coletar preços...');
 
     res.status(202).json({ message: 'Anúncios marcados para coleta. A extensão do navegador irá processá-los.' });
   } catch (err) {
@@ -542,7 +542,7 @@ app.post('/api/products/scrape', authenticateToken, async (req, res) => {
       { userId: req.user.id, isUnavailable: { $ne: true } },
       { scrapeStatus: 'pending' }
     );
-    updateScrapeStatus(req.user.id, 'running', 'Aguardando extensão para coletar preços...');
+    await updateScrapeStatus(req.user.id, 'running', 'Aguardando extensão para coletar preços...');
 
     res.status(202).json({ message: 'Anúncios marcados para coleta. A extensão do navegador irá processá-los.' });
   } catch (err) {
@@ -552,7 +552,7 @@ app.post('/api/products/scrape', authenticateToken, async (req, res) => {
 
 // Scraping status (polled by frontend to show alerts)
 app.get('/api/scrape/status', authenticateToken, async (req, res) => {
-  const inMemory = getScrapeStatus(req.user.id);
+  const inMemory = await getScrapeStatus(req.user.id);
 
   // If done, keep showing done (don't auto-convert to idle - frontend needs to see it)
   if (inMemory.state === 'done') {
@@ -568,7 +568,7 @@ app.get('/api/scrape/status', authenticateToken, async (req, res) => {
   if (inMemory.state === 'idle') {
     const pending = await Announcement.countDocuments({ userId: req.user.id, scrapeStatus: 'pending' });
     if (pending > 0) {
-      updateScrapeStatus(req.user.id, 'running', `Coletando preços... (${pending} restantes)`);
+      await updateScrapeStatus(req.user.id, 'running', `Coletando preços... (${pending} restantes)`);
       return res.json({ state: 'running', message: `Coletando preços... (${pending} restantes)`, updatedAt: new Date() });
     }
   }
@@ -613,15 +613,15 @@ app.post('/api/scrape/data', authenticateToken, async (req, res) => {
 
     const remaining = await Announcement.countDocuments({ userId: req.user.id, scrapeStatus: 'pending' });
     if (remaining === 0) {
-      updateScrapeStatus(req.user.id, 'done', 'Coleta concluída!');
+      await updateScrapeStatus(req.user.id, 'done', 'Coleta concluída!');
     } else {
-      updateScrapeStatus(req.user.id, 'running', `Coletando preços... (${remaining} restantes)`);
+      await updateScrapeStatus(req.user.id, 'running', `Coletando preços... (${remaining} restantes)`);
     }
 
     res.json({ ok: true });
   } catch (err) {
     console.error('Error processing scraped data:', err);
-    updateScrapeStatus(req.user.id, 'error', `Erro: ${err.message}`);
+    await updateScrapeStatus(req.user.id, 'error', `Erro: ${err.message}`);
     res.status(500).json({ error: `Erro ao processar dados: ${err.message}` });
   }
 });

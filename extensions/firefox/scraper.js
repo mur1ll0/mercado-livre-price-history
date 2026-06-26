@@ -1,3 +1,123 @@
+// Global Console Logging Interceptor for Extension Logs Viewer
+const originalLog = console.log;
+const originalWarn = console.warn;
+const originalError = console.error;
+
+var browserAPI = typeof browserAPI !== 'undefined' ? browserAPI : (typeof browser !== 'undefined' ? browser : chrome);
+
+function getStorage(keys) {
+  return new Promise((resolve) => {
+    try {
+      if (typeof browser !== 'undefined' && browser.storage && browser.storage.local) {
+        browser.storage.local.get(keys)
+          .then((res) => resolve(res || {}))
+          .catch(() => resolve({}));
+      } else if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+        chrome.storage.local.get(keys, (res) => {
+          resolve(res || {});
+        });
+      } else {
+        resolve({});
+      }
+    } catch (e) {
+      resolve({});
+    }
+  });
+}
+
+function setStorage(data) {
+  return new Promise((resolve) => {
+    try {
+      if (typeof browser !== 'undefined' && browser.storage && browser.storage.local) {
+        browser.storage.local.set(data)
+          .then(() => resolve(true))
+          .catch(() => resolve(false));
+      } else if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+        chrome.storage.local.set(data, () => {
+          resolve(true);
+        });
+      } else {
+        resolve(false);
+      }
+    } catch (e) {
+      resolve(false);
+    }
+  });
+}
+
+let logQueue = [];
+let isWritingLogs = false;
+
+async function processLogQueue() {
+  if (isWritingLogs || logQueue.length === 0) return;
+  isWritingLogs = true;
+  
+  try {
+    const stored = await getStorage('logs');
+    const logs = stored.logs || [];
+    
+    while (logQueue.length > 0) {
+      logs.push(logQueue.shift());
+    }
+    
+    if (logs.length > 100) {
+      logs.splice(0, logs.length - 100);
+    }
+    
+    await setStorage({ logs });
+  } catch (e) {
+    // Ignore storage errors to avoid infinite loop
+  } finally {
+    isWritingLogs = false;
+    if (logQueue.length > 0) {
+      setTimeout(processLogQueue, 50);
+    }
+  }
+}
+
+function queueLog(type, args) {
+  try {
+    const msg = args.map(arg => {
+      try {
+        return typeof arg === 'object' ? JSON.stringify(arg) : arg;
+      } catch (err) {
+        return '[Unserializable Object]';
+      }
+    }).join(' ');
+    const time = new Date().toLocaleTimeString();
+    const entry = `[${time}] [${type.toUpperCase()}] ${msg}`;
+    logQueue.push(entry);
+    processLogQueue();
+  } catch (e) {}
+}
+
+try {
+  console.log = function(...args) {
+    try {
+      originalLog.apply(console, args);
+    } catch (e) {}
+    queueLog('info', args);
+  };
+} catch (e) {}
+
+try {
+  console.warn = function(...args) {
+    try {
+      originalWarn.apply(console, args);
+    } catch (e) {}
+    queueLog('warn', args);
+  };
+} catch (e) {}
+
+try {
+  console.error = function(...args) {
+    try {
+      originalError.apply(console, args);
+    } catch (e) {}
+    queueLog('error', args);
+  };
+} catch (e) {}
+
 function parseMercadoLivreUrl(url) {
   try {
     const urlObj = new URL(url);
@@ -532,11 +652,18 @@ function buildOfferUrl(originalUrl, offerType) {
   }
 }
 
-function buildCatalogSearchUrl(originalUrl) {
+function buildCatalogSearchUrl(originalUrl, page = 1) {
   try {
     const url = new URL(originalUrl);
     url.searchParams.delete('offer_type');
-    url.pathname = url.pathname + '/s';
+    if (!url.pathname.endsWith('/s')) {
+      url.pathname = url.pathname.replace(/\/+$/, '') + '/s';
+    }
+    if (page > 1) {
+      url.searchParams.set('page', page);
+    } else {
+      url.searchParams.delete('page');
+    }
     url.hash = '';
     return url.toString();
   } catch {
@@ -551,15 +678,20 @@ async function fetchCatalogInstallments(originalUrl, sellerName, priceHint) {
   const sellerLower = sellerName.toLowerCase().replace(/[^a-z0-9]/g, '');
 
   for (let page = 1; page <= MAX_PAGES; page++) {
-    const searchUrl = buildCatalogSearchUrl(originalUrl) + '&page=' + page;
+    const searchUrl = buildCatalogSearchUrl(originalUrl, page);
     console.log('[scraper] /s fallback page', page, ':', searchUrl);
 
     try {
-      const { doc } = await fetchAndParse(searchUrl);
+      let parseResult = await fetchAndParse(searchUrl);
+      let doc = parseResult.doc;
 
       // Search forms, divs, articles for seller name
       const containers = Array.from(doc.querySelectorAll('form, div, article, li'));
-      if (containers.length === 0) continue;
+      if (containers.length === 0) {
+        doc = null;
+        parseResult = null;
+        continue;
+      }
 
       var bestContainer = null;
       var bestScore = -1;
@@ -575,11 +707,16 @@ async function fetchCatalogInstallments(originalUrl, sellerName, priceHint) {
           const priceStr = priceHint.toString();
           if (t.includes(priceStr.replace('.', '')) || t.includes(priceStr.replace('.', ','))) score += 2;
         }
-        if (score > bestScore) { bestScore = score; bestContainer = c; }
+        if (score > bestScore) {
+          bestScore = score;
+          bestContainer = c;
+        }
       }
 
       if (!bestContainer) {
         const pagination = doc.querySelector('.ui-search-pagination, [class*="pagination" i]');
+        doc = null;
+        parseResult = null;
         if (!pagination) break;
         continue;
       }
@@ -630,14 +767,20 @@ async function fetchCatalogInstallments(originalUrl, sellerName, priceHint) {
           (s.textContent || '').toLowerCase().includes('chegará')
         );
         const shippingText = chegaSpan ? (chegaSpan.textContent || '') : text;
-        deliveryDate = parseDeliveryDate(shippingText);
+        deliveryDate = extractDeliveryInfo(shippingText).deliveryDate;
       }
 
       if (installmentsText || deliveryDate) {
-        return { installmentsText: installmentsText || 'Nao informado', interestFree, installmentsTotal, deliveryDate, isFull, isFreeShipping };
+        const resultData = { installmentsText: installmentsText || 'Nao informado', interestFree, installmentsTotal, deliveryDate, isFull, isFreeShipping };
+        doc = null;
+        parseResult = null;
+        return resultData;
       }
 
-      // Check if there's a next page
+      const pagination = doc.querySelector('.ui-search-pagination, [class*="pagination" i]');
+      doc = null;
+      parseResult = null;
+      if (!pagination) break;
 
     } catch (err) {
       console.error('[scraper] /s fallback error page', page, ':', err.message);
@@ -658,7 +801,7 @@ async function scrapeListing(url, type) {
       const bestPriceUrl = buildOfferUrl(url, 'BEST_PRICE');
       const bestInstallmentsUrl = buildOfferUrl(url, 'BEST_INSTALLMENTS');
 
-      const { doc, html, finalUrl } = await fetchAndParse(baseUrl);
+      let { doc, html, finalUrl } = await fetchAndParse(baseUrl);
       const pageType = hasRealOfferList(doc) ? 'catalog' : 'normal';
 
       const bodyText = doc.body?.textContent || '';
@@ -667,6 +810,8 @@ async function scrapeListing(url, type) {
       if (finalUrl.includes('account-verification') || finalUrl.includes('suspicious_traffic') ||
           lowerBodyText.includes('não sou um robô') || lowerBodyText.includes('não sou um robo') ||
           (doc.querySelector('title')?.textContent?.trim().toLowerCase() === 'mercado livre')) {
+        doc = null;
+        html = null;
         throw new Error('Blocked by Mercado Livre bot protection.');
       }
 
@@ -682,6 +827,8 @@ async function scrapeListing(url, type) {
       }
 
       if (isUnavailable) {
+        doc = null;
+        html = null;
         return { title: common.title || 'Indisponivel', type: 'catalog', image: common.image,
           rating: common.rating, reviewsCount: common.reviewsCount, aiSummary: common.aiSummary,
           categories: common.categories, specifications: common.specifications || [], isUnavailable: true, offers: null };
@@ -698,27 +845,47 @@ async function scrapeListing(url, type) {
       bpSeller = baseOffer.seller;
       console.log('[scraper] Base page BEST_PRICE: price=' + baseOffer.price + ' seller=' + bpSeller + ' pageType=' + pageType);
 
-      // Second: scrape variant URL for BEST_PRICE (without pdp_filters)
-      // Only use to fill gaps - base page data takes priority
-      try {
-        const bpResult = await fetchAndParse(bestPriceUrl);
-        const bpDoc = bpResult.doc;
-        const bpPageType2 = hasRealOfferList(bpDoc) ? 'catalog' : 'normal';
-        const variantBp = bpPageType2 === 'catalog'
-          ? scrapeCatalogListing(bpDoc, bpResult.html)
-          : scrapeNormalListing(bpDoc, bpResult.html);
-        // Only use variant if base page has no data at all
-        if (!offers.BEST_PRICE || !offers.BEST_PRICE.price) {
-          offers.BEST_PRICE = variantBp;
+      // Keep references to fall back if necessary, then clear main references
+      let savedDocForFallback = doc;
+      let savedHtmlForFallback = html;
+      doc = null;
+      html = null;
+
+      // Fetch both variants in parallel with a 400ms stagger delay
+      const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+      const [bpRes, biRes] = await Promise.allSettled([
+        fetchAndParse(bestPriceUrl),
+        delay(400).then(() => fetchAndParse(bestInstallmentsUrl))
+      ]);
+
+      // Second: scrape variant URL for BEST_PRICE
+      if (bpRes.status === 'fulfilled') {
+        try {
+          let bpDoc = bpRes.value.doc;
+          let bpHtml = bpRes.value.html;
+          const bpPageType2 = hasRealOfferList(bpDoc) ? 'catalog' : 'normal';
+          const variantBp = bpPageType2 === 'catalog'
+            ? scrapeCatalogListing(bpDoc, bpHtml)
+            : scrapeNormalListing(bpDoc, bpHtml);
+          if (!offers.BEST_PRICE || !offers.BEST_PRICE.price) {
+            offers.BEST_PRICE = variantBp;
+          }
+          if (variantBp.seller && !offers.BEST_PRICE.seller) offers.BEST_PRICE.seller = variantBp.seller;
+          if (variantBp.deliveryDate && !offers.BEST_PRICE.deliveryDate) offers.BEST_PRICE.deliveryDate = variantBp.deliveryDate;
+          if (!offers.BEST_PRICE.isFreeShipping) offers.BEST_PRICE.isFreeShipping = variantBp.isFreeShipping;
+          if (!offers.BEST_PRICE.isFull) offers.BEST_PRICE.isFull = variantBp.isFull;
+          bpSeller = offers.BEST_PRICE?.seller;
+
+          // Free variant memory
+          bpDoc = null;
+          bpHtml = null;
+          bpRes.value.doc = null;
+          bpRes.value.html = null;
+        } catch (e) {
+          console.warn('[scraper] Parsing BEST_PRICE variant failed:', e.message);
         }
-        // Fill gaps in base data from variant
-        if (variantBp.seller && !offers.BEST_PRICE.seller) offers.BEST_PRICE.seller = variantBp.seller;
-        if (variantBp.deliveryDate && !offers.BEST_PRICE.deliveryDate) offers.BEST_PRICE.deliveryDate = variantBp.deliveryDate;
-        if (!offers.BEST_PRICE.isFreeShipping) offers.BEST_PRICE.isFreeShipping = variantBp.isFreeShipping;
-        if (!offers.BEST_PRICE.isFull) offers.BEST_PRICE.isFull = variantBp.isFull;
-        bpSeller = offers.BEST_PRICE?.seller;
-      } catch (e) {
-        console.warn('[scraper] BEST_PRICE variant fetch failed:', e.message);
+      } else {
+        console.warn('[scraper] BEST_PRICE variant fetch failed:', bpRes.reason?.message);
       }
 
       // /s fallback for BEST_PRICE installments if missing
@@ -739,40 +906,53 @@ async function scrapeListing(url, type) {
 
       // Scrape BEST_INSTALLMENTS variant
       var biSeller = bpSeller;
-      try {
-        const biResult = await fetchAndParse(bestInstallmentsUrl);
-        const biDoc = biResult.doc;
-        const biPageType = hasRealOfferList(biDoc) ? 'catalog' : 'normal';
-        var biOffer = biPageType === 'catalog'
-          ? scrapeCatalogListing(biDoc, biResult.html)
-          : scrapeNormalListing(biDoc, biResult.html);
+      if (biRes.status === 'fulfilled') {
+        try {
+          let biDoc = biRes.value.doc;
+          let biHtml = biRes.value.html;
+          const biPageType = hasRealOfferList(biDoc) ? 'catalog' : 'normal';
+          var biOffer = biPageType === 'catalog'
+            ? scrapeCatalogListing(biDoc, biHtml)
+            : scrapeNormalListing(biDoc, biHtml);
 
-        // If no price found but we have a seller, try /s fallback
-        if (biOffer.price === null && biSeller) {
-          const fallback = await fetchCatalogInstallments(baseUrl, biSeller, biOffer.price);
-          if (fallback) {
-            biOffer.installmentsText = fallback.installmentsText || biOffer.installmentsText;
-            biOffer.installmentsTotal = fallback.installmentsTotal;
-            biOffer.interestFree = fallback.interestFree;
-            if (fallback.deliveryDate && !biOffer.deliveryDate) {
-              biOffer.deliveryDate = fallback.deliveryDate;
+          if (biOffer.price === null && biSeller) {
+            const fallback = await fetchCatalogInstallments(baseUrl, biSeller, biOffer.price);
+            if (fallback) {
+              biOffer.installmentsText = fallback.installmentsText || biOffer.installmentsText;
+              biOffer.installmentsTotal = fallback.installmentsTotal;
+              biOffer.interestFree = fallback.interestFree;
+              if (fallback.deliveryDate && !biOffer.deliveryDate) {
+                biOffer.deliveryDate = fallback.deliveryDate;
+              }
+              if (fallback.isFull != null) biOffer.isFull = fallback.isFull;
+              if (fallback.isFreeShipping != null) biOffer.isFreeShipping = fallback.isFreeShipping;
             }
-            if (fallback.isFull != null) biOffer.isFull = fallback.isFull;
-            if (fallback.isFreeShipping != null) biOffer.isFreeShipping = fallback.isFreeShipping;
           }
+          offers.BEST_INSTALLMENTS = biOffer;
+          biSeller = biSeller || biOffer.seller;
+
+          // Free variant memory
+          biDoc = null;
+          biHtml = null;
+          biRes.value.doc = null;
+          biRes.value.html = null;
+        } catch (e) {
+          console.warn('[scraper] Parsing BEST_INSTALLMENTS variant failed:', e.message);
         }
-        offers.BEST_INSTALLMENTS = biOffer;
-        biSeller = biSeller || biOffer.seller;
-      } catch (e) {
-        console.warn('[scraper] BEST_INSTALLMENTS fetch failed:', e.message);
+      } else {
+        console.warn('[scraper] BEST_INSTALLMENTS fetch failed:', biRes.reason?.message);
       }
 
       // If no real catalog offers found (JS-rendered page), use base page data as single offer
-      if (!offers.BEST_PRICE) {
+      if (!offers.BEST_PRICE && savedDocForFallback) {
         offers.BEST_PRICE = pageType === 'catalog'
-          ? scrapeCatalogListing(doc, html)
-          : scrapeNormalListing(doc, html);
+          ? scrapeCatalogListing(savedDocForFallback, savedHtmlForFallback)
+          : scrapeNormalListing(savedDocForFallback, savedHtmlForFallback);
       }
+      
+      savedDocForFallback = null;
+      savedHtmlForFallback = null;
+
       if (!offers.BEST_INSTALLMENTS && offers.BEST_PRICE) {
         offers.BEST_INSTALLMENTS = { ...offers.BEST_PRICE };
       }
@@ -818,7 +998,7 @@ async function scrapeListing(url, type) {
     }
 
     // Normal listing
-    const { doc, html, finalUrl } = await fetchAndParse(url);
+    let { doc, html, finalUrl } = await fetchAndParse(url);
 
     const bodyText = doc.body?.textContent || '';
     const lowerBodyText = bodyText.toLowerCase();
@@ -826,6 +1006,8 @@ async function scrapeListing(url, type) {
     if (finalUrl.includes('account-verification') || finalUrl.includes('suspicious_traffic') ||
         lowerBodyText.includes('não sou um robô') || lowerBodyText.includes('não sou um robo') ||
         (doc.querySelector('title')?.textContent?.trim().toLowerCase() === 'mercado livre')) {
+      doc = null;
+      html = null;
       throw new Error('Blocked by Mercado Livre bot protection.');
     }
 
@@ -839,6 +1021,8 @@ async function scrapeListing(url, type) {
     }
 
     if (isUnavailable) {
+      doc = null;
+      html = null;
       return { title: common.title || 'Indisponivel', type: 'normal', image: common.image,
         rating: common.rating, reviewsCount: common.reviewsCount, aiSummary: common.aiSummary,
         categories: common.categories, specifications: common.specifications || [], isUnavailable: true };
@@ -846,7 +1030,7 @@ async function scrapeListing(url, type) {
 
     const offerData = scrapeNormalListing(doc, html);
 
-    return {
+    const resultData = {
       title: common.title, type: 'normal', image: common.image,
       rating: common.rating, reviewsCount: common.reviewsCount,
       aiSummary: common.aiSummary, categories: common.categories,
@@ -863,6 +1047,10 @@ async function scrapeListing(url, type) {
       isFreeShipping: offerData.isFreeShipping,
       seller: offerData.seller
     };
+
+    doc = null;
+    html = null;
+    return resultData;
 
   } catch (err) {
     console.error(`[ML Tracker Scraper] Error scraping ${url}:`, err.message);

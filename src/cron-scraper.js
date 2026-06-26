@@ -91,7 +91,7 @@ export async function runCronScrape(userId, specificAnnouncementId) {
   console.log(`[scraper] Found ${announcementsToScrape.length} active announcements.`);
 
   // Launch Chromium ONCE for all announcements (persistent profile)
-  updateScrapeStatus(userId, 'running', 'Iniciando navegador...');
+  await updateScrapeStatus(userId, 'running', 'Iniciando navegador...');
   const browser = await puppeteer.launch({
     headless: false,
     userDataDir: BROWSER_DATA_DIR,
@@ -123,9 +123,9 @@ export async function runCronScrape(userId, specificAnnouncementId) {
 
   if (isLoggedIn) {
     console.log('[scraper] Already logged into Mercado Livre.');
-    updateScrapeStatus(userId, 'running', 'Logado no Mercado Livre. Coletando preços...');
+    await updateScrapeStatus(userId, 'running', 'Logado no Mercado Livre. Coletando preços...');
   } else {
-    updateScrapeStatus(userId, 'needs_login',
+    await updateScrapeStatus(userId, 'needs_login',
       'Faça login na sua conta do Mercado Livre no navegador que abriu. Aguardando...');
     console.log('[scraper] Not logged in. Waiting for login (max 5 min)...');
 
@@ -143,7 +143,7 @@ export async function runCronScrape(userId, specificAnnouncementId) {
       throw new Error('Login timeout');
     });
 
-    updateScrapeStatus(userId, 'running', 'Login detectado! Coletando preços...');
+    await updateScrapeStatus(userId, 'running', 'Login detectado! Coletando preços...');
     console.log('[scraper] Login detected!');
   }
 
@@ -305,7 +305,7 @@ export async function runCronScrape(userId, specificAnnouncementId) {
   } finally {
     await browser.close();
     console.log('[scraper] Browser closed.');
-    updateScrapeStatus(userId, 'done', 'Coleta concluída!');
+    await updateScrapeStatus(userId, 'done', 'Coleta concluída!');
   }
 
   console.log(`[scraper] Done. Successes: ${successes.length}, Failures: ${failures.length}`);

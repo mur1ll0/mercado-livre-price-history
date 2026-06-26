@@ -7,15 +7,19 @@
     "storage",
     "alarms",
     "scripting",
-    "activeTab"
+    "activeTab",
+    "notifications",
+    "contextMenus"
   ],
   "host_permissions": [
     "https://www.mercadolivre.com.br/*",
     "https://produto.mercadolivre.com.br/*",
     "https://api.mercadolivre.com.br/*",
-    "https://*.vercel.app/*",
-    "http://localhost:*/*",
-    "http://127.0.0.1:*/*"
+    "https://mercado-livre-price-history.vercel.app/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*",
+    "http://localhost:3000/*",
+    "http://127.0.0.1:3000/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -23,11 +27,19 @@
   "content_scripts": [
     {
       "matches": [
-        "http://localhost:*/*",
-        "http://127.0.0.1:*/*",
-        "https://*.vercel.app/*"
+        "http://localhost/*",
+        "http://127.0.0.1/*",
+        "https://mercado-livre-price-history.vercel.app/*"
       ],
       "js": ["content-script.js"],
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://*.mercadolivre.com.br/*",
+        "https://produto.mercadolivre.com.br/*"
+      ],
+      "js": ["ml-content-script.js"],
       "run_at": "document_end"
     }
   ],

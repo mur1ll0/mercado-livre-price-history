@@ -127,8 +127,28 @@ function crc32(buf) {
   return (crc ^ 0xFFFFFFFF) >>> 0;
 }
 
+function syncFolder(src, dest, excludeFiles = []) {
+  fs.mkdirSync(dest, { recursive: true });
+  const entries = fs.readdirSync(src, { withFileTypes: true });
+  for (const entry of entries) {
+    if (excludeFiles.includes(entry.name)) continue;
+    const srcPath = path.join(src, entry.name);
+    const destPath = path.join(dest, entry.name);
+    if (entry.isDirectory()) {
+      syncFolder(srcPath, destPath, excludeFiles);
+    } else {
+      fs.copyFileSync(srcPath, destPath);
+    }
+  }
+}
+
+// Sync common files from Chrome to Firefox folder before packaging (excluding manifest.json)
+console.log('Syncing common files from Chrome to Firefox...');
+syncFolder(path.join(__dirname, 'chrome'), path.join(__dirname, 'firefox'), ['manifest.json']);
+
 zipDir(path.join(__dirname, 'chrome'), path.join(outDir, 'chrome.zip'));
 console.log('Packaged: public/extensions/chrome.zip');
 
 zipDir(path.join(__dirname, 'firefox'), path.join(outDir, 'firefox.zip'));
 console.log('Packaged: public/extensions/firefox.zip');
+

@@ -1,30 +1,36 @@
+import ScrapeStatus from '../models/ScrapeStatus.js';
+
 /**
- * In-memory scrape status tracker.
- * Tracks scraping state per user so the frontend can poll for updates.
+ * MongoDB-backed scrape status tracker.
+ * Tracks scraping state per user so the frontend can poll for updates consistently,
+ * even when running across multiple Vercel serverless containers.
  *
  * States: idle | needs_login | running | done | error
  */
 
-const statusMap = new Map();
-
-const DEFAULT_TTL = 10 * 60 * 1000; // 10 minutes
-
-export function setScrapeStatus(userId, state, message = '') {
-  const entry = { state, message, updatedAt: new Date() };
-  statusMap.set(String(userId), entry);
-  // Auto-cleanup after TTL
-  setTimeout(() => {
-    const current = statusMap.get(String(userId));
-    if (current && current.updatedAt === entry.updatedAt && current.state === entry.state) {
-      statusMap.delete(String(userId));
-    }
-  }, DEFAULT_TTL);
+export async function setScrapeStatus(userId, state, message = '') {
+  try {
+    return await ScrapeStatus.findOneAndUpdate(
+      { userId },
+      { state, message, updatedAt: new Date() },
+      { upsert: true, new: true }
+    );
+  } catch (err) {
+    console.error(`Error saving scrape status for user ${userId}:`, err);
+    return null;
+  }
 }
 
-export function getScrapeStatus(userId) {
-  return statusMap.get(String(userId)) || { state: 'idle', message: '', updatedAt: null };
+export async function getScrapeStatus(userId) {
+  try {
+    const status = await ScrapeStatus.findOne({ userId });
+    return status || { state: 'idle', message: '', updatedAt: null };
+  } catch (err) {
+    console.error(`Error getting scrape status for user ${userId}:`, err);
+    return { state: 'idle', message: 'Erro ao carregar status do banco.', updatedAt: null };
+  }
 }
 
-export function updateScrapeStatus(userId, state, message = '') {
-  setScrapeStatus(userId, state, message);
+export async function updateScrapeStatus(userId, state, message = '') {
+  return await setScrapeStatus(userId, state, message);
 }

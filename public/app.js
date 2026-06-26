@@ -41,27 +41,81 @@ function logout() {
 
 // Detect if browser extension is installed
 function detectExtension() {
-  if (isLocalhost) return;
+  // 1. Direct DOM check (set by content script at document_start)
+  if (document.documentElement && document.documentElement.dataset.mlPriceTrackerInstalled === "true") {
+    extensionDetected = true;
+    handleExtensionState(true, true);
+    return;
+  }
+
+  // 2. Runtime messaging fallback
   if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
     try {
       chrome.runtime.sendMessage('dummy-id-placeholder', { type: 'PING' }, function() {});
     } catch (e) {}
   }
+  
+  // 3. postMessage ping fallback
   window.postMessage({ type: 'ML_TRACKER_PING', source: 'ml-price-tracker-web' }, '*');
 }
 
+// Function to dynamically toggle action buttons based on extension status
+function handleExtensionState(detected, shouldConfigure = true) {
+  const syncBtn = document.getElementById('btn-sync-all');
+  const installBtn = document.getElementById('btn-install-extension');
+  
+  if (detected) {
+    if (syncBtn) syncBtn.classList.remove('hidden');
+    if (installBtn) installBtn.classList.add('hidden');
+    
+    // Auto configure token inside the extension
+    if (token && shouldConfigure) {
+      window.postMessage({
+        type: 'ML_CONFIGURE_EXTENSION',
+        source: 'ml-price-tracker-web',
+        apiBase: window.location.origin,
+        jwtToken: token
+      }, '*');
+    }
+  } else {
+    if (syncBtn) syncBtn.classList.add('hidden');
+    if (installBtn) installBtn.classList.remove('hidden');
+  }
+}
+
+// Browser detection helper
+function getBrowserType() {
+  const ua = navigator.userAgent.toLowerCase();
+  if (ua.includes('firefox')) return 'firefox';
+  return 'chrome'; // Default fallback
+}
+
+// Single consolidated message event listener (replaces duplicate listeners)
 window.addEventListener('message', function(event) {
-  if (event.data && event.data.type === 'ML_TRACKER_PONG') {
+  if (!event.data || event.data.source !== 'ml-price-tracker-extension') return;
+
+  if (event.data.type === 'ML_TRACKER_PONG') {
     extensionDetected = true;
+    handleExtensionState(true, true);
+  }
+  if (event.data.type === 'ML_TRACKER_CONFIGURED') {
+    extensionDetected = true;
+    handleExtensionState(true, false);
   }
 });
 
 // Immediately try detection
 detectExtension();
 setTimeout(function() {
-  if (!isLocalhost && !extensionDetected && localStorage.getItem('ml_token')) {
+  // Re-check DOM attribute just in case the content script finished injecting slightly late
+  if (document.documentElement && document.documentElement.dataset.mlPriceTrackerInstalled === "true") {
+    extensionDetected = true;
+    handleExtensionState(true, true);
   }
-}, 2000);
+  if (!extensionDetected) {
+    handleExtensionState(false);
+  }
+}, 1500);
 
 // Scrape Status Polling
 function startStatusPolling() {
@@ -166,35 +220,35 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   }
 
-  var connectBtn = document.getElementById('btn-connect-extension');
-  if (connectBtn) {
-    connectBtn.addEventListener('click', function() {
-      var cfg = {
-        type: 'ML_CONFIGURE_EXTENSION',
-        source: 'ml-price-tracker-web',
-        apiBase: window.location.origin,
-        jwtToken: token
-      };
-      window.postMessage(cfg, '*');
-      connectBtn.textContent = 'Enviado!';
-      connectBtn.disabled = true;
-      setTimeout(function() {
-        connectBtn.textContent = 'Conectar Extensão';
-        connectBtn.disabled = false;
-      }, 3000);
+  const installBtn = document.getElementById('btn-install-extension');
+  if (installBtn) {
+    installBtn.addEventListener('click', function(e) {
+      e.preventDefault();
+      const browser = getBrowserType();
+      const modal = document.getElementById('extension-modal');
+      const chromeInst = document.getElementById('instructions-chrome');
+      const firefoxInst = document.getElementById('instructions-firefox');
+      const dlBtn = document.getElementById('dl-extension-btn');
+      
+      if (browser === 'firefox') {
+        if (chromeInst) chromeInst.classList.add('hidden');
+        if (firefoxInst) firefoxInst.classList.remove('hidden');
+        if (dlBtn) {
+          dlBtn.href = '/extensions/firefox.zip';
+          dlBtn.textContent = 'Baixar Extensão para Firefox (.zip)';
+        }
+      } else {
+        if (chromeInst) chromeInst.classList.remove('hidden');
+        if (firefoxInst) firefoxInst.classList.add('hidden');
+        if (dlBtn) {
+          dlBtn.href = '/extensions/chrome.zip';
+          dlBtn.textContent = 'Baixar Extensão para Chrome / Edge (.zip)';
+        }
+      }
+      
+      if (modal) modal.classList.remove('hidden');
     });
   }
-
-  window.addEventListener('message', function(event) {
-    if (event.data && event.data.type === 'ML_TRACKER_PONG' && event.data.source === 'ml-price-tracker-extension') {
-      extensionDetected = true;
-    }
-    if (event.data && event.data.type === 'ML_TRACKER_CONFIGURED' && event.data.source === 'ml-price-tracker-extension') {
-      extensionDetected = true;
-      var btn = document.getElementById('btn-connect-extension');
-      if (btn) { btn.textContent = 'Conectado!'; btn.style.color = '#10b981'; }
-    }
-  });
 });
 
 // Attach logout event
@@ -732,6 +786,9 @@ function openDetailsModal(productId) {
       
       const resData = await res.json();
 
+      // Trigger immediate local extension sync
+      window.postMessage({ type: 'ML_TRIGGER_SCRAPE_NOW', source: 'ml-price-tracker-web' }, '*');
+      
       if (isLocalhost) {
         alert(resData.message || 'Sincronização agendada com sucesso!');
       } else {
@@ -953,6 +1010,10 @@ document.getElementById('btn-sync-all').addEventListener('click', async () => {
     });
 
     await res.json();
+
+    // Trigger immediate local extension sync
+    window.postMessage({ type: 'ML_TRIGGER_SCRAPE_NOW', source: 'ml-price-tracker-web' }, '*');
+
     startStatusPolling();
 
     setTimeout(() => {
