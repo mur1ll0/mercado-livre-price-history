@@ -20,47 +20,60 @@ function getJaccardSimilarity(str1, str2) {
   return intersection.size / union.size;
 }
 
+function formatSpecs(specs) {
+  if (!specs || !specs.length) return 'Nenhuma';
+  return specs.map(s => `${s.key}: ${s.value}`).join(', ');
+}
+
 /**
  * Compares two products via OpenRouter AI model.
- * @param {object} productA { title: string, category: string }
- * @param {object} productB { title: string, category: string }
- * @returns {Promise<{isSame: boolean, confidence: number, reason: string}>}
+ * @param {object} productA { title: string, category: string, specifications: Array }
+ * @param {object} productB { title: string, category: string, specifications: Array }
+ * @returns {Promise<{isSame: boolean, confidence: number, reason: string, unifiedName: string|null}>}
  */
 async function compareWithLLM(productA, productB) {
   const apiKey = process.env.OPENROUTER_API_KEY || '';
   if (!apiKey) {
     console.warn('[ai-matcher] OPENROUTER_API_KEY is not set. Skipping LLM comparison.');
-    return { isSame: false, confidence: 0, reason: 'Chave API ausente' };
+    return { isSame: false, confidence: 0, reason: 'Chave API ausente', unifiedName: null };
   }
 
   const prompt = `Você é um especialista em e-commerce e catálogo de produtos.
-Compare os dois anúncios abaixo e determine se eles representam o EXATO MESMO produto físico (mesmo fabricante, marca, modelo e geração).
-Desconsidere completamente diferenças de anúncio como: brindes inclusos, frete grátis, parcelamento sem juros, se o produto é novo/usado, ou acessórios adicionais (ex: "capa de brinde"), contanto que o produto base seja idêntico.
+Compare os dois anúncios abaixo e determine se eles representam o EXATO MESMO produto físico (mesmo fabricante, marca, modelo, geração e características técnicas).
 
-Responda estritamente no formato JSON abaixo, sem qualquer texto adicional ou blocos de código extras:
+IMPORTANTE: Use as CARACTERÍSTICAS TÉCNICAS (especificações) como fonte principal de comparação. Se as especificações de modelo, capacidade, versão ou linha forem diferentes, os produtos NÃO são o mesmo.
+
+Desconsidere completamente diferenças de anúncio como: brindes, frete grátis, parcelamento, novo/usado, acessórios adicionais, ou COR do produto.
+
+Se os produtos forem iguais, sugira um nome unificado que melhor descreva o produto (sem cor, sem informações de frete/parcelamento).
+
+Responda estritamente no formato JSON abaixo, sem qualquer texto adicional:
 {
-  "isSame": true ou false,
-  "confidence": valor de 0.0 a 1.0,
-  "reason": "Explicação curta em português (máximo 15 palavras)"
+  "isSame": true/false,
+  "confidence": 0.0 a 1.0,
+  "reason": "Explicação curta em português (máximo 20 palavras)",
+  "unifiedName": "Nome unificado sugerido (apenas se isSame=true, senão null)"
 }
 
 Anúncio 1:
 - Nome: "${productA.title}"
 - Categoria: "${productA.category}"
+- Características: ${formatSpecs(productA.specifications)}
 
 Anúncio 2:
 - Nome: "${productB.title}"
-- Categoria: "${productB.category}"`;
+- Categoria: "${productB.category}"
+- Características: ${formatSpecs(productB.specifications)}`;
 
   try {
     console.log('[ai-matcher] Querying OpenRouter for duplicate detection...');
     const response = await axios.post(
       'https://openrouter.ai/api/v1/chat/completions',
       {
-        model: 'meta-llama/llama-3-8b-instruct:free',
+        model: 'meta-llama/llama-3-8b-instruct',
         messages: [{ role: 'user', content: prompt }],
         temperature: 0.1,
-        max_tokens: 150
+        max_tokens: 200
       },
       {
         headers: {
@@ -75,40 +88,34 @@ Anúncio 2:
     const content = response.data?.choices?.[0]?.message?.content?.trim() || '';
     console.log('[ai-matcher] Raw LLM reply:', content);
 
-    // Clean markdown code blocks if the LLM returned them
     const cleanJson = content.replace(/```json/i, '').replace(/```/g, '').trim();
     const result = JSON.parse(cleanJson);
 
     return {
       isSame: !!result.isSame,
       confidence: parseFloat(result.confidence) || 0,
-      reason: result.reason || ''
+      reason: result.reason || '',
+      unifiedName: result.unifiedName || null
     };
   } catch (err) {
     console.error('[ai-matcher] OpenRouter API call failed:', err.message);
-    // Return safe fallback
-    return { isSame: false, confidence: 0, reason: `Erro: ${err.message}` };
+    return { isSame: false, confidence: 0, reason: `Erro: ${err.message}`, unifiedName: null };
   }
 }
 
 /**
  * Attempts to match a scraped announcement to an existing UnifiedProduct.
- * If a match is found, returns the existing UnifiedProduct._id.
- * If not, returns null (meaning a new UnifiedProduct should be created).
- * @param {object} scrapedData { title: string, categoryStr: string }
- * @returns {Promise<string|null>} UnifiedProduct ID if matched, null otherwise
+ * @param {object} scrapedData { title, categoryStr, specifications }
+ * @returns {Promise<{productId: string|null, unifiedName: string|null}>}
  */
 export async function findMatchingProduct(scrapedData) {
   console.log(`[ai-matcher] Matching product: "${scrapedData.title}" under category "${scrapedData.categoryStr}"`);
 
-  // 1. Fetch potential candidate products in the database
-  // We look for products that share at least part of the category, or we fetch all products if the DB is small
   const categoryParts = scrapedData.categoryStr.split('>').map(c => c.trim()).filter(Boolean);
   const mainCategory = categoryParts[0] || '';
 
-  // Get candidates that share the main category or have similar names
   const candidates = await UnifiedProduct.find({
-    category: new RegExp(mainCategory, 'i')
+    categories: new RegExp(mainCategory, 'i')
   }).lean();
 
   console.log(`[ai-matcher] Found ${candidates.length} candidates in category "${mainCategory}"`);
@@ -116,7 +123,6 @@ export async function findMatchingProduct(scrapedData) {
   let bestMatch = null;
   let highestSimilarity = 0;
 
-  // 2. Perform text Jaccard similarity first
   for (const candidate of candidates) {
     const similarity = getJaccardSimilarity(scrapedData.title, candidate.name);
     console.log(`  - Candidate: "${candidate.name}" | Jaccard Similarity: ${similarity.toFixed(2)}`);
@@ -127,27 +133,25 @@ export async function findMatchingProduct(scrapedData) {
     }
   }
 
-  // 3. Evaluate results
   if (highestSimilarity >= 0.85 && bestMatch) {
-    console.log(`[ai-matcher] Direct Match! High text similarity (${highestSimilarity.toFixed(2)}) with: "${bestMatch.name}"`);
-    return bestMatch._id;
+    console.log(`[ai-matcher] Direct Match! (${highestSimilarity.toFixed(2)}) with: "${bestMatch.name}"`);
+    return { productId: bestMatch._id, unifiedName: null };
   }
 
   if (highestSimilarity >= 0.35 && bestMatch) {
-    console.log(`[ai-matcher] Ambiguous match (${highestSimilarity.toFixed(2)}). Asking LLM to compare with: "${bestMatch.name}"`);
+    console.log(`[ai-matcher] Ambiguous match (${highestSimilarity.toFixed(2)}). Asking LLM...`);
     const llmResult = await compareWithLLM(
-      { title: scrapedData.title, category: scrapedData.categoryStr },
-      { title: bestMatch.name, category: bestMatch.category }
+      { title: scrapedData.title, category: scrapedData.categoryStr, specifications: scrapedData.specifications || [] },
+      { title: bestMatch.name, category: (bestMatch.categories || [])[0] || '', specifications: [] }
     );
 
-    console.log(`[ai-matcher] LLM Result: isSame=${llmResult.isSame}, confidence=${llmResult.confidence}, reason: "${llmResult.reason}"`);
-    
+    console.log(`[ai-matcher] LLM Result: isSame=${llmResult.isSame}, confidence=${llmResult.confidence}, unifiedName=${llmResult.unifiedName}`);
+
     if (llmResult.isSame && llmResult.confidence >= 0.7) {
-      console.log(`[ai-matcher] LLM Confirmed Match! Linking to unified product ID ${bestMatch._id}`);
-      return bestMatch._id;
+      return { productId: bestMatch._id, unifiedName: llmResult.unifiedName };
     }
   }
 
   console.log('[ai-matcher] No matching product found. Creating new UnifiedProduct.');
-  return null;
+  return { productId: null, unifiedName: null };
 }

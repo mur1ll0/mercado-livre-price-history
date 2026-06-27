@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    :root {
+      --bg-primary: #0a0712;
+      --bg-secondary: #110e24;
+      --bg-tertiary: #1b1633;
+      --accent-color: #8b5cf6;
+      --accent-gradient: linear-gradient(135deg, #7c3aed, #4f46e5);
+      --accent-hover-gradient: linear-gradient(135deg, #8b5cf6, #6366f1);
+      --text-primary: #ffffff;
+      --text-secondary: #a0aec0;
+      --text-muted: #718096;
+      --border-color: rgba(255, 255, 255, 0.08);
+      --accent-green: #10b981;
+      --accent-orange: #f59e0b;
+      --accent-red: #ef4444;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { 
+      width: 340px; 
+      font-family: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg-primary); 
+      color: var(--text-primary); 
+      padding: 20px; 
+    }
+    
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+    .logo-icon {
+      width: 24px;
+      height: 24px;
+      border-radius: 6px;
+      background: var(--accent-gradient);
+      box-shadow: 0 0 10px rgba(124, 58, 237, 0.4);
+    }
+    h2 { 
+      font-size: 1.15rem; 
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      background: linear-gradient(to right, #ffffff, #a78bfa);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .card {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 14px;
+      margin-bottom: 14px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+    }
+    
+    .status-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 0.8rem;
+      margin-bottom: 8px;
+    }
+    .status-row:last-child { margin-bottom: 0; }
+    .status-label { color: var(--text-secondary); font-weight: 500; }
+    
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 8px;
+      border-radius: 20px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    .badge-success { background: rgba(16, 185, 129, 0.12); color: var(--accent-green); }
+    .badge-warning { background: rgba(245, 158, 11, 0.12); color: var(--accent-orange); }
+    .badge-error { background: rgba(239, 68, 68, 0.12); color: var(--accent-red); }
+    .badge-info { background: rgba(124, 58, 237, 0.12); color: #c084fc; }
+    
+    .active-job-url {
+      font-size: 0.65rem;
+      color: var(--text-muted);
+      word-break: break-all;
+      background: var(--bg-primary);
+      padding: 6px;
+      border-radius: 6px;
+      border: 1px solid var(--border-color);
+      margin-top: 8px;
+      font-family: monospace;
+      max-height: 44px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+    }
+
+    label { font-size: 0.75rem; color: var(--text-secondary); display: block; margin-bottom: 4px; margin-top: 10px; font-weight: 500; }
+    input { 
+      width: 100%; 
+      padding: 9px 12px; 
+      border-radius: 8px; 
+      border: 1px solid var(--border-color); 
+      background: var(--bg-tertiary); 
+      color: #fff; 
+      font-size: 0.8rem; 
+      outline: none; 
+      transition: border-color 0.2s;
+    }
+    input:focus { border-color: var(--accent-color); }
+    
+    button { 
+      width: 100%; 
+      padding: 10px; 
+      border-radius: 8px; 
+      border: none; 
+      font-weight: 600; 
+      cursor: pointer; 
+      font-size: 0.8rem; 
+      transition: transform 0.2s, opacity 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      outline: none;
+    }
+    button:active { transform: scale(0.98); }
+    
+    .btn-primary { 
+      background: var(--accent-gradient); 
+      color: #fff; 
+      box-shadow: 0 4px 10px rgba(124, 58, 237, 0.25);
+    }
+    .btn-primary:hover {
+      background: var(--accent-hover-gradient);
+    }
+    .btn-secondary { 
+      background: var(--bg-tertiary); 
+      border: 1px solid var(--border-color); 
+      color: var(--text-primary); 
+    }
+    .btn-secondary:hover {
+      background: #251e44;
+    }
+    
+    .hidden { display: none !important; }
+    hr { border: none; border-top: 1px solid var(--border-color); margin: 12px 0; }
+    .help-text { font-size: 0.65rem; color: var(--text-muted); margin-top: 4px; }
+    
+    .connected-dot { 
+      display: inline-block; 
+      width: 8px; 
+      height: 8px; 
+      border-radius: 50%; 
+      background: var(--accent-green); 
+      margin-right: 6px; 
+    }
+    .connected-dot.pulse {
+      animation: pulse 2s infinite; 
+    }
+    .connected-dot.disconnected {
+      background: var(--accent-red);
+    }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+    
+    #toggleConfig { 
+      text-align: center; 
+      font-size: 0.7rem; 
+      color: #a78bfa; 
+      cursor: pointer; 
+      margin-top: 10px; 
+      transition: color 0.2s;
+      font-weight: 500;
+    }
+    #toggleConfig:hover { color: #c084fc; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="logo-icon"></div>
+    <h2>Price History Tracker</h2>
+  </div>
+
+  <!-- Live Status Dashboard -->
+  <div class="card">
+    <div class="status-row">
+      <span class="status-label">Servidor:</span>
+      <span id="serverConnectionEl" style="font-size:0.75rem; font-weight:600; display:flex; align-items:center;">
+        <span class="connected-dot disconnected"></span> Desconectado
+      </span>
+    </div>
+    <div class="status-row">
+      <span class="status-label">Estado Coleta:</span>
+      <span id="scraperStateBadge" class="badge badge-warning">Carregando</span>
+    </div>
+    <div class="status-row" id="pendingCountRow">
+      <span class="status-label">Jobs na Fila:</span>
+      <span id="pendingCountEl" style="font-weight: 600;">0</span>
+    </div>
+    <div id="activeJobUrlEl" class="active-job-url hidden">
+      Aguardando jobs...
+    </div>
+  </div>
+
+
+
+  <div id="autoSection" style="margin-bottom:12px;">
+    <p style="font-size:0.7rem; color:var(--text-secondary); text-align:center; line-height:1.4;">
+      O token de login é configurado automaticamente ao fazer login no painel web.
+    </p>
+  </div>
+
+  <div id="configSection" class="card hidden">
+    <label for="apiBaseInput">API Base URL</label>
+    <input type="url" id="apiBaseInput" placeholder="http://localhost:3000" />
+
+    <label for="jwtInput">JWT Token</label>
+    <input type="password" id="jwtInput" placeholder="Auto-detectado pelo site" />
+    <p class="help-text">O token é atualizado automaticamente ao acessar o site.</p>
+
+    <button class="btn-primary" id="saveBtn" style="margin-top:12px;">Salvar Configurações</button>
+    <button class="btn-secondary" id="clearBtn" style="margin-top:6px;">Limpar Dados</button>
+  </div>
+
+  <button class="btn-primary" id="triggerBtn">
+    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5">
+      <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l.73-.73" />
+    </svg>
+    Forçar Coleta Agora
+  </button>
+  
+  <button class="btn-secondary" id="logsBtn" style="margin-top:8px;">
+    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5">
+      <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+      <line x1="8" y1="21" x2="16" y2="21"></line>
+      <line x1="12" y1="17" x2="12" y2="21"></line>
+    </svg>
+    Visualizar Logs
+  </button>
+
+  <p id="toggleConfig">Configuração Manual...</p>
+
+  <hr />
+  <div style="display:flex; justify-content:space-between; align-items:center;">
+    <span class="help-text">Sincronização: Segundo Plano</span>
+    <span class="help-text" style="font-weight: 600;">MV3 Ativo</span>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

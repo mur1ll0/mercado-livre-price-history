@@ -7,7 +7,12 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node src/server.js",
-    "test-scraper": "node src/test-scraper.js"
+    "test-scraper": "node test/test-scraper.js",
+    "test-openrouter": "node test/test-openrouter.js",
+    "clean-db": "node src/clean-db.js",
+    "build": "node extensions/package.cjs",
+    "postinstall": "node extensions/package.cjs",
+    "resize-icons": "node extensions/resize-logo.cjs"
   },
   "dependencies": {
     "axios": "^1.7.9",
@@ -25,5 +30,8 @@
   },
   "keywords": [],
   "author": "",
-  "license": "ISC"
+  "license": "ISC",
+  "devDependencies": {
+    "jimp": "^1.6.1"
+  }
 }

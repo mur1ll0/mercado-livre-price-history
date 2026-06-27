@@ -1,0 +1,59 @@
+{
+  "manifest_version": 3,
+  "name": "ML Price Tracker",
+  "version": "1.0.0",
+  "description": "Coleta preços do Mercado Livre para o ML Price Tracker",
+  "permissions": [
+    "storage",
+    "alarms",
+    "scripting",
+    "activeTab",
+    "notifications",
+    "contextMenus"
+  ],
+  "host_permissions": [
+    "https://www.mercadolivre.com.br/*",
+    "https://produto.mercadolivre.com.br/*",
+    "https://api.mercadolivre.com.br/*",
+    "https://mercado-livre-price-history.vercel.app/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*",
+    "http://localhost:3000/*",
+    "http://127.0.0.1:3000/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "http://localhost/*",
+        "http://127.0.0.1/*",
+        "https://mercado-livre-price-history.vercel.app/*"
+      ],
+      "js": ["content-script.js"],
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://*.mercadolivre.com.br/*",
+        "https://produto.mercadolivre.com.br/*"
+      ],
+      "js": ["ml-content-script.js"],
+      "run_at": "document_end"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}
