@@ -99,8 +99,8 @@
           </svg>
         </div>
         <div class="stat-info">
-          <span class="stat-label">Desconto Médio</span>
-          <span id="stat-avg-discount" class="stat-value">0%</span>
+          <span class="stat-label">Score Médio</span>
+          <span id="stat-avg-score" class="stat-value">0</span>
         </div>
       </div>
     </section>
@@ -223,6 +223,12 @@
             <div class="chart-container">
               <canvas id="priceHistoryChart"></canvas>
             </div>
+            
+            <!-- Aggregated specifications section -->
+            <div class="specifications-box hidden" id="modal-specs-section" style="margin-top: 1.2rem;">
+              <h4 style="margin-bottom: 0.5rem; font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600;">Características Gerais</h4>
+              <div id="modal-specs-list" class="specs-grid"></div>
+            </div>
           </div>
 
         </div>
@@ -234,12 +240,12 @@
             <table class="comparison-table">
               <thead>
                 <tr>
-                  <th>Anúncio</th>
-                  <th>Preço</th>
                   <th>Vendedor</th>
+                  <th>Preço</th>
+                  <th>Total Parcelado</th>
                   <th>Parcelamento</th>
                   <th>Envio</th>
-                  <th>Score</th>
+                  <th>Comparação</th>
                 </tr>
               </thead>
               <tbody id="modal-comparison-tbody">

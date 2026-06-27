@@ -165,6 +165,7 @@ app.get('/api/products/ranked', authenticateToken, async (req, res) => {
           reviewsCount: ann.reviewsCount,
           aiSummary: ann.aiSummary,
           categories: ann.categories,
+          specifications: ann.specifications || [],
           isUnavailable: ann.isUnavailable,
           scrapedAt: ann.scrapedAt,
           offers: ann.offers || null,
@@ -202,6 +203,9 @@ app.get('/api/products/ranked', authenticateToken, async (req, res) => {
       const totalReviews = ratedAnns.reduce((sum, a) => sum + (a.reviewsCount || 0), 0);
       const combinedAiSummary = ratedAnns.find(a => a.aiSummary)?.aiSummary || '';
 
+      const bestOpportunity = scored.find(a => !a.isUnavailable && a.price) || null;
+      const productScore = bestOpportunity?.costBenefitScore || 0;
+      const productFactors = bestOpportunity?.scoreFactors || [];
       return {
         id: prod._id,
         ...prod,
@@ -210,7 +214,9 @@ app.get('/api/products/ranked', authenticateToken, async (req, res) => {
         aiSummary: combinedAiSummary,
         announcementsCount: announcements.length,
         announcements: scored,
-        bestOpportunity: scored.find(a => !a.isUnavailable && a.price) || null,
+        bestOpportunity,
+        score: productScore,
+        scoreFactors: productFactors,
       };
     }));
 
@@ -228,33 +234,176 @@ function scoreAnnouncements(announcements, histories) {
     priceHistoryMap[h.announcementId].push(h);
   });
 
-  let minPrice = Infinity;
-  announcements.forEach(ann => {
-    if (ann.price && ann.price < minPrice && !ann.isUnavailable) minPrice = ann.price;
-    (priceHistoryMap[ann._id] || []).forEach(h => { if (h.price < minPrice) minPrice = h.price; });
-  });
-  if (minPrice === Infinity) minPrice = 0;
-
   return announcements.map(ann => {
-    const history = priceHistoryMap[ann._id] || [];
+    const annHistory = priceHistoryMap[ann._id] || [];
     if (ann.isUnavailable || !ann.price) {
-      return { ...ann, priceHistory: history, costBenefitScore: 0 };
+      return { ...ann, priceHistory: annHistory, costBenefitScore: 0, scoreFactors: [] };
     }
-    const priceScore = minPrice > 0 ? Math.min(100, 100 * (minPrice / ann.price)) : 50;
-    const discountScore = ann.discountPercent || 0;
-    let shippingScore = (ann.isFreeShipping ? 50 : 0) + (ann.isFull ? 20 : 0);
-    const time = (ann.deliveryDate || '').toString().toLowerCase();
-    if (time.includes('amanhã') || time.includes('hoje')) shippingScore += 30;
-    else if (time.includes('2 dias') || time.includes('sexta') || time.includes('sábado')) shippingScore += 20;
-    shippingScore = Math.min(100, shippingScore);
-    const installmentScore = ann.interestFree ? 100 : 0;
-    const ratingScore = (ann.rating || 4.0) * 20;
-    const final = priceScore * 0.40 + discountScore * 0.10 + shippingScore * 0.20 + installmentScore * 0.15 + ratingScore * 0.15;
+
+    // Sort history by date ascending (using string comparison on ISO dates YYYY-MM-DD)
+    annHistory.sort((a, b) => a.date.localeCompare(b.date));
+
+    // Separate price and installments histories
+    const priceHist = ann.type === 'catalog'
+      ? annHistory.filter(h => h.offerKey === 'BEST_PRICE')
+      : annHistory.filter(h => !h.offerKey);
+
+    const instHist = ann.type === 'catalog'
+      ? annHistory.filter(h => h.offerKey === 'BEST_INSTALLMENTS')
+      : annHistory.filter(h => !h.offerKey);
+
+    const currentPrice = ann.price;
+    const prevPrice = priceHist.length >= 2 ? priceHist[priceHist.length - 2].price : null;
+
+    let priceComponent = 0;
+    const priceDetails = [];
+    if (prevPrice !== null && currentPrice !== null) {
+      if (currentPrice < prevPrice) {
+        priceComponent += 20;
+        priceDetails.push(`Preço reduziu de R$ ${prevPrice.toLocaleString('pt-BR')} para R$ ${currentPrice.toLocaleString('pt-BR')}`);
+      } else if (currentPrice > prevPrice) {
+        priceComponent -= 20;
+        priceDetails.push(`Preço aumentou de R$ ${prevPrice.toLocaleString('pt-BR')} para R$ ${currentPrice.toLocaleString('pt-BR')}`);
+      } else {
+        priceDetails.push('Sem alteração recente');
+      }
+    } else {
+      priceDetails.push('Sem histórico recente');
+    }
+    if (ann.discountPercent && ann.discountPercent > 0) {
+      const discountBonus = Math.min(15, ann.discountPercent * 0.6);
+      priceComponent += discountBonus;
+      priceDetails.push(`${ann.discountPercent}% de desconto (+${discountBonus.toFixed(1)} pts)`);
+    }
+
+    const currentInstTotal = ann.installmentsTotal;
+    const prevInstTotal = instHist.length >= 2 ? instHist[instHist.length - 2].installmentsTotal : null;
+
+    let installmentComponent = 0;
+    const installmentDetails = [];
+    if (prevInstTotal !== null && currentInstTotal !== null) {
+      if (currentInstTotal < prevInstTotal) {
+        installmentComponent += 15;
+        installmentDetails.push(`Total parcelado reduziu de R$ ${prevInstTotal.toLocaleString('pt-BR')} para R$ ${currentInstTotal.toLocaleString('pt-BR')}`);
+      } else if (currentInstTotal > prevInstTotal) {
+        installmentComponent -= 15;
+        installmentDetails.push(`Total parcelado aumentou de R$ ${prevInstTotal.toLocaleString('pt-BR')} para R$ ${currentInstTotal.toLocaleString('pt-BR')}`);
+      }
+    }
+    if (ann.interestFree) {
+      installmentComponent += 10;
+      installmentDetails.push('Parcelamento sem juros (+10 pts)');
+    }
+    const instMatch = (ann.installmentsText || '').match(/(\d+)x/i);
+    let numInstallments = 0;
+    if (instMatch) {
+      numInstallments = parseInt(instMatch[1], 10);
+      if (numInstallments > 1) {
+        const instBonus = Math.min(8, numInstallments * 0.4);
+        installmentComponent += instBonus;
+        installmentDetails.push(`${numInstallments}x no cartão (+${instBonus.toFixed(1)} pts)`);
+      }
+    }
+
+    // Apply Compensation logic
+    let finalPriceComponent = priceComponent;
+    let finalInstallmentComponent = installmentComponent;
+    let priceCompensated = false;
+    let installmentCompensated = false;
+
+    if (priceComponent > 10 && installmentComponent < 0) {
+      finalInstallmentComponent = installmentComponent * 0.4;
+      installmentCompensated = true;
+    }
+    if (installmentComponent > 10 && priceComponent < 0) {
+      finalPriceComponent = priceComponent * 0.4;
+      priceCompensated = true;
+    }
+
+    // Build factors list starting with base score 75
+    const factors = [
+      { label: 'Score Base', value: 75, type: 'neu', text: 'Pontuação inicial padrão' }
+    ];
+
+    if (finalPriceComponent !== 0) {
+      factors.push({
+        label: 'Preço' + (priceCompensated ? ' (Compensado)' : ''),
+        value: finalPriceComponent,
+        type: finalPriceComponent > 0 ? 'pos' : 'neg',
+        text: priceDetails.join(', ')
+      });
+    }
+    if (finalInstallmentComponent !== 0) {
+      factors.push({
+        label: 'Parcelamento' + (installmentCompensated ? ' (Compensado)' : ''),
+        value: finalInstallmentComponent,
+        type: finalInstallmentComponent > 0 ? 'pos' : 'neg',
+        text: installmentDetails.join(', ')
+      });
+    }
+
+    // 3. deliveryDate
+    let deliveryValue = 0;
+    const deliveryDetails = [];
+    const scrapedDate = ann.scrapedAt ? new Date(ann.scrapedAt) : new Date();
+    const deliveryDate = ann.deliveryDate ? new Date(ann.deliveryDate) : null;
+    if (deliveryDate) {
+      const diffTime = deliveryDate.getTime() - scrapedDate.getTime();
+      const days = Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
+      if (days <= 2) {
+        deliveryValue += 4;
+        deliveryDetails.push(`Entrega rápida em ${days} dia(s)`);
+      } else if (days === 3) {
+        deliveryDetails.push('Entrega em 3 dias');
+      } else {
+        const delPenalty = Math.min(10, (days - 3) * 1.0);
+        deliveryValue -= delPenalty;
+        deliveryDetails.push(`Entrega em ${days} dias`);
+      }
+    } else {
+      deliveryValue -= 3;
+      deliveryDetails.push('Sem prazo informado');
+    }
+    if (ann.isFull) {
+      deliveryValue += 3;
+      deliveryDetails.push('Envio Full (+3 pts)');
+    }
+    if (deliveryValue !== 0) {
+      factors.push({
+        label: 'Envio / Prazo',
+        value: deliveryValue,
+        type: deliveryValue > 0 ? 'pos' : 'neg',
+        text: deliveryDetails.join(', ')
+      });
+    }
+
+    // 4. shippingCost
+    let shippingValue = 0;
+    const shippingDetails = [];
+    if (ann.isFreeShipping) {
+      shippingValue += 5;
+      shippingDetails.push('Frete Grátis (+5 pts)');
+    } else if (ann.shippingCost !== null && ann.shippingCost > 0) {
+      shippingValue -= 5;
+      shippingDetails.push(`Frete pago de R$ ${ann.shippingCost.toLocaleString('pt-BR')}`);
+    }
+    if (shippingValue !== 0) {
+      factors.push({
+        label: 'Custo do Frete',
+        value: shippingValue,
+        type: shippingValue > 0 ? 'pos' : 'neg',
+        text: shippingDetails.join(', ')
+      });
+    }
+
+    const calculatedScore = 75 + finalPriceComponent + finalInstallmentComponent + deliveryValue + shippingValue;
+    const finalScore = Math.max(0, Math.min(100, calculatedScore));
 
     return {
       ...ann,
-      priceHistory: history,
-      costBenefitScore: parseFloat(final.toFixed(1))
+      priceHistory: annHistory,
+      costBenefitScore: parseFloat(finalScore.toFixed(1)),
+      scoreFactors: factors
     };
   }).sort((a, b) => b.costBenefitScore - a.costBenefitScore);
 }

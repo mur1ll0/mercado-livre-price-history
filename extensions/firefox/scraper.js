@@ -245,7 +245,7 @@ function extractSpecifications(doc) {
   console.log('[scraper] extractSpecs: found', headings.length, 'headings');
   for (const h of headings) {
     const hText = (h.textContent || '').trim().toLowerCase();
-    if (hText.includes('características principais')) {
+    if (hText.includes('características principais') || hText.includes('características gerais')) {
       console.log('[scraper] extractSpecs: found heading:', h.tagName, hText.substring(0, 50));
       let table = h.nextElementSibling;
       if (!table || table.tagName !== 'TABLE') {
@@ -993,7 +993,7 @@ async function scrapeListing(url, type) {
         title: common.title, type: 'catalog', image: common.image,
         rating: common.rating, reviewsCount: common.reviewsCount,
         aiSummary: common.aiSummary, categories: common.categories,
-        isUnavailable: false, offers: cleanOffers
+        specifications: common.specifications || [], isUnavailable: false, offers: cleanOffers
       };
     }
 
@@ -1012,6 +1012,8 @@ async function scrapeListing(url, type) {
     }
 
     const common = extractCommonFields(doc);
+    const specs = extractSpecifications(doc);
+    common.specifications = specs;
 
     let isUnavailable = false;
     if (lowerBodyText.includes('anúncio pausado') || lowerBodyText.includes('o vendedor pausou') ||
@@ -1034,7 +1036,7 @@ async function scrapeListing(url, type) {
       title: common.title, type: 'normal', image: common.image,
       rating: common.rating, reviewsCount: common.reviewsCount,
       aiSummary: common.aiSummary, categories: common.categories,
-      isUnavailable: false,
+      specifications: common.specifications || [], isUnavailable: false,
       price: offerData.price,
       originalPrice: offerData.originalPrice,
       discountPercent: offerData.discountPercent,

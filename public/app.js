@@ -328,15 +328,15 @@ async function loadCategories() {
 function renderStats() {
   document.getElementById('stat-total-products').textContent = productsData.length;
   
-  let totalDiscount = 0;
-  let productsWithDiscount = 0;
+  let totalScore = 0;
+  let productsWithScore = 0;
   let bestOpportunityAnn = null;
   let bestScore = -1;
 
   productsData.forEach(prod => {
-    if (prod.avgDiscount > 0) {
-      totalDiscount += prod.avgDiscount;
-      productsWithDiscount++;
+    if (prod.score !== undefined && prod.score !== null) {
+      totalScore += prod.score;
+      productsWithScore++;
     }
     (prod.announcements || []).forEach(ann => {
       if (!ann.isUnavailable && ann.costBenefitScore > bestScore) {
@@ -346,8 +346,8 @@ function renderStats() {
     });
   });
 
-  const avgDisc = productsWithDiscount > 0 ? (totalDiscount / productsWithDiscount).toFixed(1) : 0;
-  document.getElementById('stat-avg-discount').textContent = `${avgDisc}%`;
+  const avgScore = productsWithScore > 0 ? (totalScore / productsWithScore).toFixed(1) : 0;
+  document.getElementById('stat-avg-score').textContent = avgScore;
 
   const bestDealEl = document.getElementById('stat-best-deal');
   if (bestOpportunityAnn) {
@@ -363,6 +363,82 @@ function getAnnouncementPrice(ann) {
     return ann.offers.BEST_PRICE?.price || ann.offers.BEST_INSTALLMENTS?.price || null;
   }
   return ann.price;
+}
+
+function formatDeliveryDateShort(dateStr) {
+  if (!dateStr) return '';
+  const date = new Date(dateStr);
+  if (isNaN(date.getTime())) return '';
+  
+  const day = date.getUTCDate();
+  const months = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+  const month = months[date.getUTCMonth()];
+  
+  const weekdays = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
+  const weekday = weekdays[date.getUTCDay()];
+  
+  return `(${day}/${month} ${weekday})`;
+}
+
+function formatDeliveryInfo(ann, parentScrapedAt = null) {
+  if (!ann) return 'Não disponível';
+  
+  let parts = [];
+  if (ann.isFull) parts.push('⚡Full');
+  if (ann.isFreeShipping) {
+    parts.push('Grátis');
+  } else if (ann.shippingCost !== null && ann.shippingCost > 0) {
+    parts.push(`+ R$ ${ann.shippingCost.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+  }
+  
+  const scrapedAt = ann.scrapedAt || parentScrapedAt || Date.now();
+  if (ann.deliveryDate) {
+    const delDate = new Date(ann.deliveryDate);
+    const today = new Date(scrapedAt);
+    delDate.setHours(0,0,0,0);
+    today.setHours(0,0,0,0);
+    const diffDays = Math.ceil((delDate - today) / (1000 * 60 * 60 * 24));
+    
+    let daysText = '';
+    if (diffDays <= 0) daysText = 'hoje';
+    else if (diffDays === 1) daysText = 'até 1 dia';
+    else daysText = `até ${diffDays} dias`;
+    
+    parts.push(daysText);
+    
+    const dateFormatted = formatDeliveryDateShort(ann.deliveryDate);
+    if (dateFormatted) {
+      parts.push(dateFormatted);
+    }
+  } else {
+    parts.push('Sem previsão');
+  }
+  
+  return parts.join(' ');
+}
+
+function getBestDeliveryAnnouncement(announcements) {
+  const active = (announcements || []).filter(a => !a.isUnavailable);
+  if (active.length === 0) return null;
+  
+  const sorted = [...active].sort((a, b) => {
+    if (!a.deliveryDate && b.deliveryDate) return 1;
+    if (a.deliveryDate && !b.deliveryDate) return -1;
+    if (!a.deliveryDate && !b.deliveryDate) return 0;
+    
+    const daysA = Math.max(0, Math.ceil((new Date(a.deliveryDate) - new Date(a.scrapedAt || Date.now())) / (1000 * 60 * 60 * 24)));
+    const daysB = Math.max(0, Math.ceil((new Date(b.deliveryDate) - new Date(b.scrapedAt || Date.now())) / (1000 * 60 * 60 * 24)));
+    
+    if (daysA !== daysB) return daysA - daysB;
+    if (a.isFull !== b.isFull) return b.isFull ? 1 : -1;
+    if (a.isFreeShipping !== b.isFreeShipping) return b.isFreeShipping ? 1 : -1;
+    
+    const priceA = getAnnouncementPrice(a) || Infinity;
+    const priceB = getAnnouncementPrice(b) || Infinity;
+    return priceA - priceB;
+  });
+  
+  return sorted[0];
 }
 
 function getAnnouncementSeller(ann) {
@@ -468,57 +544,101 @@ function renderProductsList() {
   productsData.forEach(prod => {
     const card = document.createElement('div');
     const announcements = prod.announcements || [];
-    const bestDeal = getBestDeal(announcements);
     
+    const activeAnns = announcements.filter(a => !a.isUnavailable);
+    let melhorPrecoAnn = null;
+    let melhorParcelamentoAnn = null;
+    
+    activeAnns.forEach(ann => {
+      const p = getAnnouncementPrice(ann);
+      if (p !== null && p > 0) {
+        if (!melhorPrecoAnn || p < getAnnouncementPrice(melhorPrecoAnn)) {
+          melhorPrecoAnn = ann;
+        }
+      }
+      if (ann.installmentsTotal !== null && ann.installmentsTotal > 0) {
+        if (!melhorParcelamentoAnn || ann.installmentsTotal < melhorParcelamentoAnn.installmentsTotal) {
+          melhorParcelamentoAnn = ann;
+        }
+      }
+    });
+
+    const bestPriceVal = melhorPrecoAnn ? getAnnouncementPrice(melhorPrecoAnn) : null;
+    const bestPriceFormatted = bestPriceVal !== null ? `R$ ${bestPriceVal.toLocaleString('pt-BR')}` : 'Indisponível';
+    
+    const bestInstVal = melhorParcelamentoAnn ? melhorParcelamentoAnn.installmentsTotal : null;
+    const bestInstallmentFormatted = bestInstVal !== null ? `R$ ${bestInstVal.toLocaleString('pt-BR')}` : 'Indisponível';
+    const installmentText = melhorParcelamentoAnn ? melhorParcelamentoAnn.installmentsText : '';
+
+    const bestDeliveryAnn = getBestDeliveryAnnouncement(announcements);
+    const bestDeliveryText = bestDeliveryAnn ? formatDeliveryInfo(bestDeliveryAnn) : 'Não disponível';
+
     let scoreClass = 'score-low';
     let scoreText = 'Regular';
     
-    if (bestDeal) {
-      if (bestDeal.costBenefitScore >= 80) {
+    if (prod.score !== undefined && prod.score !== null) {
+      if (prod.score >= 80) {
         scoreClass = 'score-high';
         scoreText = 'Excelente Custo-Benefício';
-      } else if (bestDeal.costBenefitScore >= 50) {
+      } else if (prod.score >= 50) {
         scoreClass = 'score-med';
         scoreText = 'Bom Custo-Benefício';
       }
     }
 
+    let prodScoreClass = 'score-low-text';
+    if (prod.score >= 80) prodScoreClass = 'score-high-text';
+    else if (prod.score >= 50) prodScoreClass = 'score-med-text';
+
     card.className = `product-card ${scoreClass}`;
     
     const imageSrc = prod.image || 'https://http2.mlstatic.com/frontend-assets/ml-web-navigation/img/social/ML_logo.png';
-    const bestPrice = bestDeal ? getAnnouncementPrice(bestDeal) : null;
-    const bestPriceFormatted = bestPrice !== null ? `R$ ${bestPrice.toLocaleString('pt-BR')}` : 'Indisponível';
     
-    // Build mini-list of announcements
+    // Build mini-list of announcements (replaced with Melhor Entrega + Score metrics)
     let announcementsHtml = '';
     if (announcements.length > 0) {
+      const scoreFactors = prod.scoreFactors || [];
+      const factorsHtml = scoreFactors.map(f => {
+        const sign = f.value > 0 ? '+' : '';
+        const signClass = f.value > 0 ? 'pos' : f.value < 0 ? 'neg' : 'neu';
+        const valStr = f.value === 0 ? '0.0' : `${sign}${f.value.toFixed(1)}`;
+        return `
+          <div class="score-factor-row" title="${f.text || ''}">
+            <span class="score-factor-label">${f.label}</span>
+            <span class="score-factor-value ${signClass}">${valStr} pts</span>
+          </div>
+        `;
+      }).join('');
+
+      const bgClass = prodScoreClass.replace('-text', '-bg');
+
       announcementsHtml = `
         <div class="product-announcements-list">
           <h4>Anúncios Vinculados (${announcements.length})</h4>
-          ${announcements.slice(0, 3).map(ann => {
-            const annPrice = getAnnouncementPrice(ann);
-            const priceStr = annPrice !== null ? `R$ ${annPrice.toLocaleString('pt-BR')}` : 'Indisponível';
-            const ship = formatShipping(ann);
-            const seller = getAnnouncementSeller(ann);
-            const sellerStr = seller ? `<span class="ann-seller">${seller}</span>` : '';
-            const statusClass = ann.isUnavailable ? 'score-low-text' : 
-                               (ann.costBenefitScore >= 80 ? 'score-high-text' : 
-                               (ann.costBenefitScore >= 50 ? 'score-med-text' : 'score-low-text'));
+          
+          <div class="delivery-info-row" style="display: flex; flex-direction: column; margin-top: 0.4rem;">
+            <span class="delivery-label" style="font-size: 0.72rem; color: var(--text-secondary); text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;">Melhor Entrega</span>
+            <span class="delivery-value" style="font-size: 0.88rem; color: #fff; font-weight: 500; margin-top: 0.15rem;">${bestDeliveryText}</span>
+          </div>
+          
+          <div class="score-info-row" style="display: flex; align-items: center; justify-content: space-between; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); padding: 0.5rem 0.75rem; border-radius: 8px; margin-top: 0.6rem; position: relative;">
+            <span class="score-label" style="font-size: 0.75rem; color: var(--text-secondary); font-weight: 600;">SCORE DO PRODUTO</span>
+            <span class="score-value-badge ${prodScoreClass}" style="font-size: 0.85rem; font-weight: 700; padding: 0.15rem 0.5rem; border-radius: 6px;">${prod.score !== undefined ? prod.score : 0} pts</span>
             
-            return `
-              <div class="announcement-row">
-                <div class="announcement-info-left">
-                  <span class="announcement-name" title="${ann.title}">${ann.title}</span>
-                  <div class="ann-meta-row">${sellerStr}<span class="ann-ship-info">${ship.displayText}</span></div>
-                </div>
-                <div class="announcement-info-right">
-                  <span class="announcement-price">${priceStr}</span>
-                  <span class="announcement-score-badge ${statusClass}">${ann.isUnavailable ? 'Pausado' : ann.costBenefitScore + ' pts'}</span>
-                </div>
+            <!-- Custom Stylized Tooltip -->
+            <div class="score-tooltip">
+              <div class="score-tooltip-header">
+                <span>Detalhamento do Score</span>
+                <strong>${prod.score !== undefined ? prod.score : 0} pts</strong>
               </div>
-            `;
-          }).join('')}
-          ${announcements.length > 3 ? `<p style="font-size:0.75rem; color:var(--text-secondary); text-align:right; margin-top:0.2rem;">+ ${announcements.length - 3} outros anúncios...</p>` : ''}
+              <div class="score-progress-bar-container">
+                <div class="score-progress-bar ${bgClass}" style="width: ${prod.score !== undefined ? prod.score : 0}%;"></div>
+              </div>
+              <div class="score-tooltip-factors">
+                ${factorsHtml || '<div style="font-size:0.7rem; color:var(--text-secondary);">Sem fatores registrados</div>'}
+              </div>
+            </div>
+          </div>
         </div>
       `;
     }
@@ -553,10 +673,15 @@ function renderProductsList() {
             ${ratingRow}
           </div>
           
-          <div class="product-price-info">
-            <div class="price-badge-container">
-              <span class="price-tag">${bestPriceFormatted}</span>
-              ${bestDeal && bestDeal.discountPercent > 0 ? `<span class="discount-pill">-${bestDeal.discountPercent}%</span>` : ''}
+          <div class="product-prices-row" style="display: flex; justify-content: space-between; margin-top: 0.75rem; gap: 1rem;">
+            <div class="price-box-left" style="display: flex; flex-direction: column;">
+              <span class="price-box-label" style="font-size: 0.72rem; color: var(--text-secondary); text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;">Melhor Preço</span>
+              <span class="price-box-value" style="font-size: 1.2rem; font-weight: 800; color: var(--accent-cyan); font-family: var(--font-display);">${bestPriceFormatted}</span>
+            </div>
+            <div class="price-box-right" style="display: flex; flex-direction: column; text-align: right;">
+              <span class="price-box-label" style="font-size: 0.72rem; color: var(--text-secondary); text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;">Melhor Parcelamento</span>
+              <span class="price-box-value" style="font-size: 1.2rem; font-weight: 800; color: var(--accent-cyan); font-family: var(--font-display);">${bestInstallmentFormatted}</span>
+              <span class="installment-text" style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.1rem;">${installmentText}</span>
             </div>
           </div>
           
@@ -712,54 +837,106 @@ function openDetailsModal(productId) {
 
   prod.announcements.forEach(ann => {
     const seller = getAnnouncementSeller(ann) || '-';
-    const statusClass = ann.isUnavailable ? 'score-low-text' : 
-                       (ann.costBenefitScore >= 80 ? 'score-high-text' : 
-                       (ann.costBenefitScore >= 50 ? 'score-med-text' : 'score-low-text'));
-    const scoreVal = ann.isUnavailable ? 'Pausado' : `${ann.costBenefitScore}/100`;
     const annUrl = ann.url || '';
 
+    // Calculate price change comparing latest price in history to preceding one
+    const priceHist = ann.type === 'catalog'
+      ? (ann.priceHistory || []).filter(h => h.offerKey === 'BEST_PRICE')
+      : (ann.priceHistory || []).filter(h => !h.offerKey);
+      
+    priceHist.sort((a, b) => a.date.localeCompare(b.date));
+    
+    const currentPrice = ann.price;
+    const prevPrice = priceHist.length >= 2 ? priceHist[priceHist.length - 2].price : null;
+    
+    let comparisonHtml = '';
+    if (prevPrice !== null && currentPrice !== null) {
+      if (currentPrice > prevPrice) {
+        comparisonHtml = `<span class="badge-price-change badge-price-up">Aumentou</span>`;
+      } else if (currentPrice < prevPrice) {
+        comparisonHtml = `<span class="badge-price-change badge-price-down">Diminuiu</span>`;
+      } else {
+        comparisonHtml = `<span class="badge-price-change badge-price-same">Manteve</span>`;
+      }
+    } else {
+      comparisonHtml = `<span class="badge-price-change badge-price-same">Manteve</span>`;
+    }
+
     const tr = document.createElement('tr');
+    tr.style.cursor = 'pointer';
+    tr.onclick = () => window.open(annUrl, '_blank');
 
     if (ann.type === 'catalog' && ann.offers) {
-      var bp = ann.offers.BEST_PRICE;
-      var bi = ann.offers.BEST_INSTALLMENTS;
-      var bpPrice = bp && bp.price ? 'R$ ' + bp.price.toLocaleString('pt-BR') : '-';
-      var bpShip = bp ? formatShipping({ type: 'catalog', offers: { BEST_PRICE: bp } }) : { displayText: '-' };
-      var installmentsStr = bi && bi.installmentsText ? bi.installmentsText : '-';
-      var biShip = bi ? formatShipping({ type: 'catalog', offers: { BEST_PRICE: bi } }) : null;
+      const bp = ann.offers.BEST_PRICE;
+      const bi = ann.offers.BEST_INSTALLMENTS;
+      const bpPrice = bp && bp.price ? 'R$ ' + bp.price.toLocaleString('pt-BR') : '-';
+      const biTotal = bi && bi.installmentsTotal ? 'R$ ' + bi.installmentsTotal.toLocaleString('pt-BR') : '-';
+      const installmentsStr = bi && bi.installmentsText ? bi.installmentsText : '-';
+      const shippingFormatted = bp ? formatDeliveryInfo(bp, ann.scrapedAt) : 'Não disponível';
 
       tr.innerHTML = `
-        <td class="tbl-deal-name" title="${ann.title}">
-          <a href="${annUrl}" target="_blank" class="ml-link-anchor">${ann.title}</a>
-        </td>
-        <td class="tbl-deal-price">${bpPrice}</td>
         <td style="font-size:0.8rem;">${seller}</td>
+        <td class="tbl-deal-price">${bpPrice}</td>
+        <td style="font-size:0.85rem; font-weight:600; color:#fff;">${biTotal}</td>
         <td style="font-size:0.8rem;">${installmentsStr}</td>
-        <td style="font-size:0.75rem; color:var(--text-secondary); max-width:250px;">${bpShip.displayText}</td>
-        <td><span class="announcement-score-badge ${statusClass}">${scoreVal}</span></td>
+        <td style="font-size:0.75rem; color:var(--text-secondary); max-width:250px;">${shippingFormatted}</td>
+        <td style="text-align:center;">${comparisonHtml}</td>
       `;
     } else {
       const annPrice = getAnnouncementPrice(ann);
-      const annInstallments = getAnnouncementInstallments(ann);
       const priceStr = annPrice !== null ? `R$ ${annPrice.toLocaleString('pt-BR')}` : 'Indisponível';
-      const ship = formatShipping(ann);
+      const biTotal = ann.installmentsTotal !== null ? `R$ ${ann.installmentsTotal.toLocaleString('pt-BR')}` : '-';
+      const annInstallments = getAnnouncementInstallments(ann);
+      const shippingFormatted = formatDeliveryInfo(ann);
 
       tr.innerHTML = `
-        <td class="tbl-deal-name" title="${ann.title}">
-          <a href="${annUrl}" target="_blank" class="ml-link-anchor">${ann.title}</a>
-        </td>
-        <td class="tbl-deal-price">${priceStr}</td>
         <td style="font-size:0.8rem;">${seller}</td>
+        <td class="tbl-deal-price">${priceStr}</td>
+        <td style="font-size:0.85rem; font-weight:600; color:#fff;">${biTotal}</td>
         <td style="font-size:0.8rem;">${annInstallments}</td>
-        <td style="font-size:0.75rem; color:var(--text-secondary); max-width:250px;">${ship.displayText}</td>
-        <td><span class="announcement-score-badge ${statusClass}">${scoreVal}</span></td>
+        <td style="font-size:0.75rem; color:var(--text-secondary); max-width:250px;">${shippingFormatted}</td>
+        <td style="text-align:center;">${comparisonHtml}</td>
       `;
     }
     tbody.appendChild(tr);
   });
 
-  // Render Chart
+  // Render specifications
+  const specsContainer = document.getElementById('modal-specs-section');
+  const specsList = document.getElementById('modal-specs-list');
+  
+  if (specsContainer && specsList) {
+    const uniqueSpecs = {};
+    (prod.announcements || []).forEach(ann => {
+      (ann.specifications || []).forEach(spec => {
+        const key = (spec.key || '').trim();
+        const value = (spec.value || '').trim();
+        if (key && value && !uniqueSpecs[key]) {
+          uniqueSpecs[key] = value;
+        }
+      });
+    });
+
+    const keys = Object.keys(uniqueSpecs);
+    if (keys.length > 0) {
+      specsList.innerHTML = keys.map(key => `
+        <div class="spec-item">
+          <span class="spec-key" title="${key}">${key}</span>
+          <span class="spec-value" title="${uniqueSpecs[key]}">${uniqueSpecs[key]}</span>
+        </div>
+      `).join('');
+      specsContainer.classList.remove('hidden');
+    } else {
+      specsList.innerHTML = '';
+      specsContainer.classList.add('hidden');
+    }
+  }
+
+  // Draw price history chart
   renderChart(prod.announcements);
+
+  // Show modal
+  modal.classList.remove('hidden');
 
   // Configure update action inside modal
   const updateBtn = document.getElementById('modal-btn-update');

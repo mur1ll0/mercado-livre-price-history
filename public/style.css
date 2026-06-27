@@ -966,3 +966,190 @@ body {
     padding: 1rem;
   }
 }
+
+/* Specifications Grid */
+.specs-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.6rem;
+  max-height: 180px;
+  overflow-y: auto;
+  padding: 0.8rem;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+}
+
+.spec-item {
+  display: flex;
+  flex-direction: column;
+  padding: 0.4rem 0.6rem;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 6px;
+}
+
+.spec-key {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.spec-value {
+  font-size: 0.82rem;
+  color: #fff;
+  font-weight: 500;
+  margin-top: 0.1rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Price Comparison Badges */
+.badge-price-change {
+  padding: 0.2rem 0.6rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  border-radius: 6px;
+  display: inline-block;
+  text-align: center;
+  min-width: 70px;
+}
+
+.badge-price-up {
+  background: rgba(229, 62, 62, 0.15);
+  color: var(--accent-red);
+  border: 1px solid rgba(229, 62, 62, 0.3);
+}
+
+.badge-price-down {
+  background: rgba(16, 185, 129, 0.15);
+  color: var(--accent-green);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.badge-price-same {
+  background: rgba(237, 137, 54, 0.15);
+  color: var(--accent-orange);
+  border: 1px solid rgba(237, 137, 54, 0.3);
+}
+
+/* Custom Tooltip Container */
+.score-info-row {
+  position: relative;
+}
+
+.score-tooltip {
+  visibility: hidden;
+  opacity: 0;
+  width: 280px;
+  background: #1a202c; /* solid dark background */
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 0.9rem;
+  position: absolute;
+  bottom: 125%;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+  transition: opacity 0.2s ease, visibility 0.2s ease;
+  pointer-events: none;
+  text-align: left;
+}
+
+/* Hover state */
+.score-info-row:hover .score-tooltip {
+  visibility: visible;
+  opacity: 1;
+}
+
+/* Tooltip Header */
+.score-tooltip-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding-bottom: 0.4rem;
+}
+
+.score-tooltip-header span {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.score-tooltip-header strong {
+  font-size: 0.9rem;
+  color: var(--accent-cyan);
+  font-weight: 800;
+}
+
+/* Progress Bar */
+.score-progress-bar-container {
+  height: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 0.8rem;
+}
+
+.score-progress-bar {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+/* Color classes for progress bar */
+.score-progress-bar.score-high-bg {
+  background: var(--accent-green) !important;
+}
+.score-progress-bar.score-med-bg {
+  background: var(--accent-orange) !important;
+}
+.score-progress-bar.score-low-bg {
+  background: var(--accent-red) !important;
+}
+
+/* Factor rows */
+.score-tooltip-factors {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.score-factor-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.72rem;
+  line-height: 1.3;
+  align-items: center;
+}
+
+.score-factor-label {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.score-factor-value {
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* Factor color classes */
+.score-factor-value.pos {
+  color: var(--accent-green);
+}
+.score-factor-value.neg {
+  color: var(--accent-red);
+}
+.score-factor-value.neu {
+  color: #fff;
+}

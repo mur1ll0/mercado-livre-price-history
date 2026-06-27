@@ -222,6 +222,7 @@ export async function runCronScrape(userId, specificAnnouncementId) {
       ann.reviewsCount = scraped.reviewsCount || 0;
       ann.aiSummary = scraped.aiSummary || '';
       ann.categories = scraped.categories || [];
+      ann.specifications = scraped.specifications || [];
       ann.isUnavailable = false;
       ann.scrapedAt = new Date();
 
